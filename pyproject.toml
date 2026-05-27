@@ -1,0 +1,39 @@
+[project]
+name = "agent-over-protocol"
+version = "0.1.0"
+description = "Async Python A2A agent backed by OpenRouter."
+requires-python = ">=3.14"
+license = "MIT"
+dependencies = [
+    "a2a-sdk[http-server]>=1.0.3",
+    "openai>=2.38.0",
+    "pydantic-settings>=2.14.1",
+    "uvicorn[standard]>=0.48.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-httpx>=0.36.2",
+    "ruff>=0.15.14",
+    "ty>=0.0.40",
+]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812", # Conflicts with Ruff format.
+    "D203",   # Mutually exclusive with D211.
+    "D213",   # Mutually exclusive with D212.
+    "ISC001", # Conflicts with Ruff format.
+]
+
+[tool.ty.rules]
+all = "error"
+
+[tool.pytest.ini_options]
+addopts = ["--strict-config", "--strict-markers"]
+asyncio_mode = "auto"
+testpaths = ["tests"]
