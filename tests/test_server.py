@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from agent_over_protocol.profiles import RAYMOND_SYSTEM_PROMPT
 from agent_over_protocol.server import create_app
 from agent_over_protocol.settings import Settings
 
@@ -25,10 +26,17 @@ class FakeBackend:
         """Initialize the fake backend."""
         self.response = response
         self.prompts: list[str] = []
+        self.system_prompts: list[str | None] = []
 
-    async def complete(self, prompt: str) -> str:
+    async def complete(
+        self,
+        prompt: str,
+        *,
+        system_prompt: str | None = None,
+    ) -> str:
         """Capture the prompt and return the configured response."""
         self.prompts.append(prompt)
+        self.system_prompts.append(system_prompt)
         return self.response
 
 
@@ -48,29 +56,60 @@ async def test_agent_card_is_invitable() -> None:
     """The agent card is available at the URL used by invite flows."""
     backend = FakeBackend()
     async with _client(backend) as client:
-        response = await client.get("/.well-known/agent.json")
+        response = await client.get("/.well-known/danny.json")
 
     assert response.status_code == httpx.codes.OK
     body = response.json()
     response_text = response.text
 
-    assert body["name"] == "Agent Over Protocol"
-    assert body["url"] == "https://agent.example.com/a2a"
+    assert body["name"] == "Danny"
+    assert body["url"] == "https://agent.example.com/danny/a2a"
     assert body["preferredTransport"] == "JSONRPC"
-    assert body["supportedInterfaces"][0]["url"] == "https://agent.example.com/a2a"
+    assert body["supportedInterfaces"][0]["url"] == (
+        "https://agent.example.com/danny/a2a"
+    )
     assert body["skills"][0]["id"] == "general-chat"
     assert "OPENROUTER_API_KEY" not in response_text
     assert "test-openrouter-api-key" not in response_text
 
 
-async def test_standard_agent_card_path_is_available() -> None:
-    """The SDK standard agent-card path is also served."""
+async def test_generic_agent_card_paths_are_not_served() -> None:
+    """The generic card paths are not exposed."""
     backend = FakeBackend()
     async with _client(backend) as client:
-        response = await client.get("/.well-known/agent-card.json")
+        agent_response = await client.get("/.well-known/agent.json")
+        agent_card_response = await client.get("/.well-known/agent-card.json")
+
+    assert agent_response.status_code == httpx.codes.NOT_FOUND
+    assert agent_card_response.status_code == httpx.codes.NOT_FOUND
+
+
+async def test_standard_danny_agent_card_path_is_available() -> None:
+    """The SDK-style Danny card path is also served."""
+    backend = FakeBackend()
+    async with _client(backend) as client:
+        response = await client.get("/.well-known/danny-agent-card.json")
 
     assert response.status_code == httpx.codes.OK
-    assert response.json()["name"] == "Agent Over Protocol"
+    assert response.json()["name"] == "Danny"
+
+
+async def test_raymond_agent_card_is_invitable() -> None:
+    """Raymond is exposed as a separate A2A agent card."""
+    backend = FakeBackend()
+    async with _client(backend) as client:
+        response = await client.get("/.well-known/raymond.json")
+
+    assert response.status_code == httpx.codes.OK
+    body = response.json()
+
+    assert body["name"] == "Raymond"
+    assert body["url"] == "https://agent.example.com/raymond/a2a"
+    assert body["preferredTransport"] == "JSONRPC"
+    assert body["supportedInterfaces"][0]["url"] == (
+        "https://agent.example.com/raymond/a2a"
+    )
+    assert body["skills"][0]["id"] == "raymond-chat"
 
 
 async def test_send_message_returns_completed_task() -> None:
@@ -78,7 +117,7 @@ async def test_send_message_returns_completed_task() -> None:
     backend = FakeBackend(response="A2A test response")
     async with _client(backend) as client:
         response = await client.post(
-            "/a2a",
+            "/danny/a2a",
             headers=A2A_V1_HEADERS,
             json=_send_message_request("hello"),
         )
@@ -97,12 +136,45 @@ async def test_send_message_returns_completed_task() -> None:
     assert task["history"][0]["parts"] == [{"text": "hello"}]
 
 
+async def test_generic_a2a_endpoint_is_not_served() -> None:
+    """The generic /a2a endpoint is not exposed."""
+    backend = FakeBackend()
+    async with _client(backend) as client:
+        response = await client.post(
+            "/a2a",
+            headers=A2A_V1_HEADERS,
+            json=_send_message_request("hello"),
+        )
+
+    assert response.status_code == httpx.codes.NOT_FOUND
+    assert backend.prompts == []
+
+
+async def test_raymond_endpoint_uses_separate_system_prompt() -> None:
+    """Raymond uses a separate A2A endpoint and system prompt."""
+    backend = FakeBackend(response="Raymond test response")
+    async with _client(backend) as client:
+        response = await client.post(
+            "/raymond/a2a",
+            headers=A2A_V1_HEADERS,
+            json=_send_message_request("hello raymond"),
+        )
+
+    assert response.status_code == httpx.codes.OK
+    assert backend.prompts == ["hello raymond"]
+    assert backend.system_prompts == [RAYMOND_SYSTEM_PROMPT]
+
+    task = response.json()["result"]["task"]
+    assert task["status"]["state"] == "TASK_STATE_COMPLETED"
+    assert task["artifacts"][0]["parts"] == [{"text": "Raymond test response"}]
+
+
 async def test_streaming_message_emits_artifact_and_completed_status() -> None:
     """A streaming JSON-RPC request exposes text as an artifact update."""
     backend = FakeBackend(response="Streaming A2A response")
     async with _client(backend) as client:
         response = await client.post(
-            "/a2a",
+            "/danny/a2a",
             headers=A2A_V1_HEADERS,
             json=_send_streaming_message_request("stream hello"),
         )
@@ -121,7 +193,7 @@ async def test_empty_message_is_rejected_without_backend_call() -> None:
     backend = FakeBackend()
     async with _client(backend) as client:
         response = await client.post(
-            "/a2a",
+            "/danny/a2a",
             headers=A2A_V1_HEADERS,
             json=_send_message_request(""),
         )

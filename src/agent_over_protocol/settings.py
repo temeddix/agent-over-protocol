@@ -15,19 +15,23 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    agent_name: str = "Agent Over Protocol"
-    agent_description: str = "An async A2A agent backed by OpenRouter."
+    agent_name: str = "Danny"
+    agent_description: str = "Danny's async A2A agent backed by OpenRouter."
     agent_version: str = "0.1.0"
     agent_base_url: str = "http://localhost:8000"
-    agent_rpc_path: str = "/a2a"
-    agent_card_path: str = "/.well-known/agent.json"
-    agent_standard_card_path: str = "/.well-known/agent-card.json"
+    agent_rpc_path: str = "/danny/a2a"
+    agent_card_path: str = "/.well-known/danny.json"
+    agent_standard_card_path: str = "/.well-known/danny-agent-card.json"
     openrouter_api_key: str | None = None
 
     @property
     def rpc_url(self) -> str:
         """Return the absolute A2A JSON-RPC endpoint URL."""
-        return join_url(self.agent_base_url, self.agent_rpc_path)
+        return self.join(self.agent_rpc_path)
+
+    def join(self, path: str) -> str:
+        """Return an absolute URL for a local path."""
+        return join_url(self.agent_base_url, path)
 
 
 def normalize_path(path: str) -> str:

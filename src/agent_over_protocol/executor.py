@@ -31,9 +31,15 @@ if TYPE_CHECKING:
 class OpenRouterAgentExecutor(AgentExecutor):
     """A2A executor that answers text prompts with an async chat backend."""
 
-    def __init__(self, backend: ChatBackend) -> None:
+    def __init__(
+        self,
+        backend: ChatBackend,
+        *,
+        system_prompt: str | None = None,
+    ) -> None:
         """Initialize the executor."""
         self._backend = backend
+        self._system_prompt = system_prompt
 
     async def execute(
         self,
@@ -68,7 +74,10 @@ class OpenRouterAgentExecutor(AgentExecutor):
         )
 
         try:
-            answer = await self._backend.complete(prompt)
+            answer = await self._backend.complete(
+                prompt,
+                system_prompt=self._system_prompt,
+            )
         except ModelBackendError as exc:
             message = _agent_message(task_id, context_id, str(exc))
             await event_queue.enqueue_event(

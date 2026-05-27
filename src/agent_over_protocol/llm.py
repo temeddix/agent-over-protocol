@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Protocol
 from openai import AsyncOpenAI, OpenAIError
 
 if TYPE_CHECKING:
+    from openai.types.chat import ChatCompletionMessageParam
+
     from agent_over_protocol.settings import Settings
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -22,7 +24,12 @@ class ModelBackendError(RuntimeError):
 class ChatBackend(Protocol):
     """Async chat backend used by the A2A executor."""
 
-    async def complete(self, prompt: str) -> str:
+    async def complete(
+        self,
+        prompt: str,
+        *,
+        system_prompt: str | None = None,
+    ) -> str:
         """Return a response for a user prompt."""
 
 
@@ -59,12 +66,23 @@ class OpenRouterBackend:
             timeout_seconds=OPENROUTER_TIMEOUT_SECONDS,
         )
 
-    async def complete(self, prompt: str) -> str:
+    async def complete(
+        self,
+        prompt: str,
+        *,
+        system_prompt: str | None = None,
+    ) -> str:
         """Return an OpenRouter chat completion for the prompt."""
+        messages: list[ChatCompletionMessageParam] = [
+            {"role": "user", "content": prompt}
+        ]
+        if system_prompt:
+            messages.insert(0, {"role": "system", "content": system_prompt})
+
         try:
             response = await self._client.chat.completions.create(
                 model=self._model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
             )
         except OpenAIError as exc:
             message = "OpenRouter request failed"

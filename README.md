@@ -22,12 +22,13 @@ uv run uvicorn --app-dir src agent_over_protocol.server:create_app --factory --h
 
 Invite/discovery URLs:
 
-- `http://127.0.0.1:8000/.well-known/agent.json`
-- `http://127.0.0.1:8000/.well-known/agent-card.json`
-- `http://127.0.0.1:8000/a2a`
+- Danny: `http://127.0.0.1:8000/.well-known/danny.json`
+- Raymond: `http://127.0.0.1:8000/.well-known/raymond.json`
+- Danny JSON-RPC: `http://127.0.0.1:8000/danny/a2a`
+- Raymond JSON-RPC: `http://127.0.0.1:8000/raymond/a2a`
 
-Use `/.well-known/agent.json` as the Agent A2A URL in invite dialogs. The card
-advertises `/a2a` as the JSON-RPC endpoint.
+Use `/.well-known/danny.json` or `/.well-known/raymond.json` as the Agent A2A
+URL in invite dialogs.
 
 ## Test
 

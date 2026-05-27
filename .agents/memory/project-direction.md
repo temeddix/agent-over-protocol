@@ -21,6 +21,6 @@ Build a Python A2A agent using `a2a-sdk`.
 - Test-only environment templates live at `tests/.env.template`, and local
   ignored test credentials live at `tests/.env`; production environment
   variables are provided through Compose/Portainer.
-- The A2A server should be invitable by exposing a public agent card at
-  `/.well-known/agent.json`, with the SDK standard `/.well-known/agent-card.json`
-  path also available.
+- The A2A server should expose named invitable agent cards:
+  `/.well-known/danny.json` for Danny and `/.well-known/raymond.json` for
+  Raymond.

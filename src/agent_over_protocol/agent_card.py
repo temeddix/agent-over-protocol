@@ -15,17 +15,19 @@ from a2a.types import (
 from a2a.utils.constants import PROTOCOL_VERSION_0_3, PROTOCOL_VERSION_1_0
 
 if TYPE_CHECKING:
+    from agent_over_protocol.profiles import AgentProfile
     from agent_over_protocol.settings import Settings
 
 
 TEXT_MIME_TYPE = "text/plain"
 
 
-def build_agent_card(settings: Settings) -> AgentCard:
+def build_agent_card(settings: Settings, profile: AgentProfile) -> AgentCard:
     """Build the public A2A agent card."""
+    rpc_url = settings.join(profile.rpc_path)
     return AgentCard(
-        name=settings.agent_name,
-        description=settings.agent_description,
+        name=profile.name,
+        description=profile.description,
         version=settings.agent_version,
         provider=AgentProvider(
             organization="Agent Over Protocol",
@@ -33,12 +35,12 @@ def build_agent_card(settings: Settings) -> AgentCard:
         ),
         supported_interfaces=[
             AgentInterface(
-                url=settings.rpc_url,
+                url=rpc_url,
                 protocol_binding="JSONRPC",
                 protocol_version=PROTOCOL_VERSION_0_3,
             ),
             AgentInterface(
-                url=settings.rpc_url,
+                url=rpc_url,
                 protocol_binding="JSONRPC",
                 protocol_version=PROTOCOL_VERSION_1_0,
             ),
@@ -52,14 +54,11 @@ def build_agent_card(settings: Settings) -> AgentCard:
         default_output_modes=[TEXT_MIME_TYPE],
         skills=[
             AgentSkill(
-                id="general-chat",
-                name="General Chat",
-                description="Responds to text prompts through an async LLM backend.",
-                tags=["chat", "assistant", "openrouter"],
-                examples=[
-                    "Summarize this thread.",
-                    "Draft a concise reply.",
-                ],
+                id=profile.skill_id,
+                name=profile.skill_name,
+                description=profile.skill_description,
+                tags=list(profile.skill_tags),
+                examples=list(profile.skill_examples),
                 input_modes=[TEXT_MIME_TYPE],
                 output_modes=[TEXT_MIME_TYPE],
             )
