@@ -18,5 +18,9 @@ Build a Python A2A agent using `a2a-sdk`.
 - A minimal `src/agent_over_protocol` package and `tests` directory now exist so
   Ruff and ty can run against stable project roots.
 - `uv.lock` is generated and should be kept for application reproducibility.
-- Test-only environment templates live at `tests/.env.template`; production
-  environment variables are provided through Compose/Portainer.
+- Test-only environment templates live at `tests/.env.template`, and local
+  ignored test credentials live at `tests/.env`; production environment
+  variables are provided through Compose/Portainer.
+- The A2A server should be invitable by exposing a public agent card at
+  `/.well-known/agent.json`, with the SDK standard `/.well-known/agent-card.json`
+  path also available.

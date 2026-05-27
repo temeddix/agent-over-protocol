@@ -13,6 +13,10 @@ The project should optimize for strict Python quality from the beginning.
   `[tool.ty.rules] all = "error"`.
 - Development dependencies are in a single uv `dev` dependency group.
 - Current quality checks pass with `uv run ruff check .` and `uv run ty check .`.
+- Current server tests pass with pytest.
+- README.md lists the basic local quality and test commands:
+  `uv run ruff check .`, `uv run ty check .`, `uv run pytest`, and
+  `uv lock --check`.
 - Keep public functions, protocol boundaries, and provider interfaces typed.
 - Prefer async clients and avoid blocking file I/O, network I/O, subprocess
   calls, or CPU-heavy work in async paths.

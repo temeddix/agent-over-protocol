@@ -49,6 +49,7 @@ coverage.xml
 *.py.cover
 .hypothesis/
 .pytest_cache/
+.podman-debug-context/
 cover/
 
 # Translations
@@ -149,6 +150,7 @@ activemq-data/
 
 # Environments
 .env
+tests/.env
 .envrc
 .venv
 env/
