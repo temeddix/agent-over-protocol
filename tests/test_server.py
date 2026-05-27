@@ -92,7 +92,28 @@ async def test_send_message_returns_completed_task() -> None:
     task = body["result"]["task"]
     assert task["status"]["state"] == "TASK_STATE_COMPLETED"
     assert task["status"]["message"]["parts"] == [{"text": "A2A test response"}]
+    assert task["artifacts"][0]["name"] == "response"
+    assert task["artifacts"][0]["parts"] == [{"text": "A2A test response"}]
     assert task["history"][0]["parts"] == [{"text": "hello"}]
+
+
+async def test_streaming_message_emits_artifact_and_completed_status() -> None:
+    """A streaming JSON-RPC request exposes text as an artifact update."""
+    backend = FakeBackend(response="Streaming A2A response")
+    async with _client(backend) as client:
+        response = await client.post(
+            "/a2a",
+            headers=A2A_V1_HEADERS,
+            json=_send_streaming_message_request("stream hello"),
+        )
+
+    assert response.status_code == httpx.codes.OK
+    assert backend.prompts == ["stream hello"]
+
+    assert '"artifactUpdate"' in response.text
+    assert '"text": "Streaming A2A response"' in response.text
+    assert '"statusUpdate"' in response.text
+    assert '"state": "TASK_STATE_COMPLETED"' in response.text
 
 
 async def test_empty_message_is_rejected_without_backend_call() -> None:
@@ -136,3 +157,9 @@ def _send_message_request(text: str) -> dict[str, object]:
             "configuration": {"acceptedOutputModes": ["text/plain"]},
         },
     }
+
+
+def _send_streaming_message_request(text: str) -> dict[str, object]:
+    request = _send_message_request(text)
+    request["method"] = "SendStreamingMessage"
+    return request

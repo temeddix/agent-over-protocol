@@ -8,10 +8,12 @@ from typing import TYPE_CHECKING
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.types import (
+    Artifact,
     Message,
     Part,
     Role,
     Task,
+    TaskArtifactUpdateEvent,
     TaskState,
     TaskStatus,
     TaskStatusUpdateEvent,
@@ -68,22 +70,30 @@ class OpenRouterAgentExecutor(AgentExecutor):
         try:
             answer = await self._backend.complete(prompt)
         except ModelBackendError as exc:
+            message = _agent_message(task_id, context_id, str(exc))
+            await event_queue.enqueue_event(
+                _artifact_event(task_id, context_id, str(exc), name="error")
+            )
             await event_queue.enqueue_event(
                 _status_event(
                     task_id,
                     context_id,
                     TaskState.TASK_STATE_FAILED,
-                    _agent_message(task_id, context_id, str(exc)),
+                    message,
                 )
             )
             return
 
+        message = _agent_message(task_id, context_id, answer)
+        await event_queue.enqueue_event(
+            _artifact_event(task_id, context_id, answer, name="response")
+        )
         await event_queue.enqueue_event(
             _status_event(
                 task_id,
                 context_id,
                 TaskState.TASK_STATE_COMPLETED,
-                _agent_message(task_id, context_id, answer),
+                message,
             )
         )
 
@@ -136,6 +146,25 @@ def _status_event(
         task_id=task_id,
         context_id=context_id,
         status=TaskStatus(state=state, message=message),
+    )
+
+
+def _artifact_event(
+    task_id: str,
+    context_id: str,
+    text: str,
+    *,
+    name: str,
+) -> TaskArtifactUpdateEvent:
+    return TaskArtifactUpdateEvent(
+        task_id=task_id,
+        context_id=context_id,
+        artifact=Artifact(
+            artifact_id=str(uuid.uuid4()),
+            name=name,
+            parts=[Part(text=text)],
+        ),
+        last_chunk=True,
     )
 
 
