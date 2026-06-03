@@ -12,9 +12,18 @@ Production deployment is expected to run through Compose/Portainer.
   installs only locked runtime dependencies with
   `uv sync --frozen --no-dev --no-install-project`.
 - The ASGI server listens on container port `8000`.
-- Compose maps `${AOP_HOST_PORT:-8000}` to container port `8000`.
-- Compose exposes only `AGENT_BASE_URL` and `OPENROUTER_API_KEY`; Portainer
-  should provide their real values.
+- Compose maps `${AOP_HOST_PORT}` to container port `8000`.
+- Compose environment interpolation should not add implicit defaults unless the
+  user explicitly asks for them.
+- Compose exposes only required runtime values such as `AGENT_BASE_URL`,
+  `OPENROUTER_API_KEY`, and host ports; avoid adding optional env passthroughs
+  unless requested.
+- Compose mounts the `agent-context` named volume read-only into the A2A agent
+  at `/context` and read-write into File Browser at `/srv`.
+- The A2A agent reads runtime context from `/context/AGENTS.md`; File Browser
+  edits the same mounted directory through `/srv`.
+- File Browser maps `${FILEBROWSER_PORT}` to container port `80` and stores
+  its database in the `filebrowser-database` named volume.
 - `/healthz` is used for container health checks.
 - Keep `.dockerignore` updated for Portainer and the current local Podman
   Compose provider.

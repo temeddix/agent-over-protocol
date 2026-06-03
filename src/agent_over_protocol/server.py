@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from agent_over_protocol.agent_card import build_agent_card
+from agent_over_protocol.context import FileInstructionProvider
 from agent_over_protocol.executor import OpenRouterAgentExecutor
 from agent_over_protocol.llm import ChatBackend, OpenRouterBackend
 from agent_over_protocol.settings import Settings, normalize_path
@@ -36,9 +37,13 @@ def create_app(
     """Create the A2A ASGI application."""
     resolved_settings = settings or Settings()
     resolved_backend = backend or OpenRouterBackend.from_settings(resolved_settings)
+    instruction_provider = FileInstructionProvider.from_settings(resolved_settings)
     agent_card = build_agent_card(resolved_settings)
     request_handler = DefaultRequestHandler(
-        agent_executor=OpenRouterAgentExecutor(resolved_backend),
+        agent_executor=OpenRouterAgentExecutor(
+            resolved_backend,
+            instruction_provider=instruction_provider,
+        ),
         task_store=InMemoryTaskStore(),
         agent_card=agent_card,
     )

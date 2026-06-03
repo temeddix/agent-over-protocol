@@ -20,3 +20,10 @@ The server is built as a Starlette ASGI app using `a2a-sdk` route helpers.
   `uvicorn --app-dir src agent_over_protocol.server:create_app --factory`.
 - A2A v1 JSON-RPC requests should send the `A2A-Version: 1.0` header; the SDK
   treats missing version headers as v0.3.
+- Runtime model instructions are provided by
+  `agent_over_protocol.context.FileInstructionProvider`, which combines an
+  optional `AGENT_CONTEXT_COMMAND` with optional `AGENT_CONTEXT_FILE` contents.
+- The executor loads runtime instructions once per non-empty A2A request and
+  passes them to `ChatBackend.complete(..., instructions=...)`.
+- The OpenRouter backend sends runtime instructions as a system message before
+  the user prompt when instructions are present.

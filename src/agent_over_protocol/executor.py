@@ -20,20 +20,28 @@ from a2a.types import (
 )
 from a2a.utils.errors import InvalidParamsError
 
+from agent_over_protocol.context import ContextLoadError
 from agent_over_protocol.llm import ModelBackendError
 
 if TYPE_CHECKING:
     from a2a.server.events.event_queue_v2 import EventQueue
 
+    from agent_over_protocol.context import InstructionProvider
     from agent_over_protocol.llm import ChatBackend
 
 
 class OpenRouterAgentExecutor(AgentExecutor):
     """A2A executor that answers text prompts with an async chat backend."""
 
-    def __init__(self, backend: ChatBackend) -> None:
+    def __init__(
+        self,
+        backend: ChatBackend,
+        *,
+        instruction_provider: InstructionProvider | None = None,
+    ) -> None:
         """Initialize the executor."""
         self._backend = backend
+        self._instruction_provider = instruction_provider
 
     async def execute(
         self,
@@ -68,8 +76,9 @@ class OpenRouterAgentExecutor(AgentExecutor):
         )
 
         try:
-            answer = await self._backend.complete(prompt)
-        except ModelBackendError as exc:
+            instructions = await self._load_instructions()
+            answer = await self._backend.complete(prompt, instructions=instructions)
+        except (ContextLoadError, ModelBackendError) as exc:
             message = _agent_message(task_id, context_id, str(exc))
             await event_queue.enqueue_event(
                 _artifact_event(task_id, context_id, str(exc), name="error")
@@ -96,6 +105,11 @@ class OpenRouterAgentExecutor(AgentExecutor):
                 message,
             )
         )
+
+    async def _load_instructions(self) -> str | None:
+        if self._instruction_provider is None:
+            return None
+        return await self._instruction_provider.load()
 
     async def cancel(
         self,

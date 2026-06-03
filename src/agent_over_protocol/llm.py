@@ -8,10 +8,11 @@ from typing import TYPE_CHECKING, Protocol
 from openai import AsyncOpenAI, OpenAIError
 
 if TYPE_CHECKING:
+    from openai.types.chat import ChatCompletionMessageParam
+
     from agent_over_protocol.settings import Settings
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL = "openai/gpt-4.1-mini"
 OPENROUTER_TIMEOUT_SECONDS = 60.0
 
 
@@ -22,7 +23,7 @@ class ModelBackendError(RuntimeError):
 class ChatBackend(Protocol):
     """Async chat backend used by the A2A executor."""
 
-    async def complete(self, prompt: str) -> str:
+    async def complete(self, prompt: str, *, instructions: str | None = None) -> str:
         """Return a response for a user prompt."""
 
 
@@ -54,17 +55,17 @@ class OpenRouterBackend:
             raise ModelBackendError(message)
         return cls(
             api_key=api_key,
-            model=OPENROUTER_MODEL,
+            model=settings.openrouter_model,
             base_url=OPENROUTER_BASE_URL,
             timeout_seconds=OPENROUTER_TIMEOUT_SECONDS,
         )
 
-    async def complete(self, prompt: str) -> str:
+    async def complete(self, prompt: str, *, instructions: str | None = None) -> str:
         """Return an OpenRouter chat completion for the prompt."""
         try:
             response = await self._client.chat.completions.create(
                 model=self._model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=_messages(prompt, instructions=instructions),
             )
         except OpenAIError as exc:
             message = "OpenRouter request failed"
@@ -80,3 +81,16 @@ class OpenRouterBackend:
 
         message = "OpenRouter returned an empty response"
         raise ModelBackendError(message)
+
+
+def _messages(
+    prompt: str,
+    *,
+    instructions: str | None,
+) -> list[ChatCompletionMessageParam]:
+    messages: list[ChatCompletionMessageParam] = []
+    system_instructions = (instructions or "").strip()
+    if system_instructions:
+        messages.append({"role": "system", "content": system_instructions})
+    messages.append({"role": "user", "content": prompt})
+    return messages

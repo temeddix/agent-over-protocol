@@ -43,13 +43,19 @@ uv lock --check
 ```powershell
 $env:AGENT_BASE_URL = "https://agent.example.com"
 $env:OPENROUTER_API_KEY = "your-openrouter-key"
+$env:AOP_HOST_PORT = "8000"
+$env:FILEBROWSER_PORT = "8080"
 podman compose -f compose.yaml config
 podman compose -f compose.yaml build
 podman compose -f compose.yaml up -d
 ```
 
-For Portainer, provide real `AGENT_BASE_URL` and `OPENROUTER_API_KEY` values in
-the stack environment.
+For Portainer, provide the Compose environment variables explicitly in the stack
+environment. Do not rely on Compose interpolation defaults.
+
+File Browser is exposed on `${FILEBROWSER_PORT}` and serves the `agent-context`
+named volume. Edit `AGENTS.md` there to change the runtime context used by the
+A2A agent. The agent reads `/context/AGENTS.md` on each model request.
 
 ## Container Build Context
 

@@ -13,6 +13,7 @@ from agent_over_protocol.settings import Settings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+    from pathlib import Path
 
 
 A2A_V1_HEADERS = {"A2A-Version": "1.0"}
@@ -25,17 +26,23 @@ class FakeBackend:
         """Initialize the fake backend."""
         self.response = response
         self.prompts: list[str] = []
+        self.instructions: list[str | None] = []
 
-    async def complete(self, prompt: str) -> str:
+    async def complete(self, prompt: str, *, instructions: str | None = None) -> str:
         """Capture the prompt and return the configured response."""
         self.prompts.append(prompt)
+        self.instructions.append(instructions)
         return self.response
 
 
 @asynccontextmanager
-async def _client(backend: FakeBackend) -> AsyncIterator[httpx.AsyncClient]:
-    settings = Settings(agent_base_url="https://agent.example.com")
-    app = create_app(settings=settings, backend=backend)
+async def _client(
+    backend: FakeBackend,
+    *,
+    settings: Settings | None = None,
+) -> AsyncIterator[httpx.AsyncClient]:
+    resolved_settings = settings or Settings(agent_base_url="https://agent.example.com")
+    app = create_app(settings=resolved_settings, backend=backend)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport,
@@ -95,6 +102,38 @@ async def test_send_message_returns_completed_task() -> None:
     assert task["artifacts"][0]["name"] == "response"
     assert task["artifacts"][0]["parts"] == [{"text": "A2A test response"}]
     assert task["history"][0]["parts"] == [{"text": "hello"}]
+
+
+async def test_send_message_uses_runtime_context_file(tmp_path: Path) -> None:
+    """Runtime command and AGENTS.md content are passed to the backend."""
+    context_file = tmp_path / "AGENTS.md"
+    context_file.write_text(
+        "# Runtime Agent\nAnswer in Korean with concise context.",
+        encoding="utf-8",
+    )
+    settings = Settings(
+        agent_base_url="https://agent.example.com",
+        agent_context_file=str(context_file),
+        agent_context_command="Follow this A2A server runtime context.",
+    )
+    backend = FakeBackend(response="Context-aware response")
+
+    async with _client(backend, settings=settings) as client:
+        response = await client.post(
+            "/a2a",
+            headers=A2A_V1_HEADERS,
+            json=_send_message_request("hello with context"),
+        )
+
+    assert response.status_code == httpx.codes.OK
+    assert backend.prompts == ["hello with context"]
+    assert backend.instructions == [
+        "Runtime command:\n"
+        "Follow this A2A server runtime context.\n\n"
+        "Context file (AGENTS.md):\n"
+        "# Runtime Agent\n"
+        "Answer in Korean with concise context.",
+    ]
 
 
 async def test_streaming_message_emits_artifact_and_completed_status() -> None:

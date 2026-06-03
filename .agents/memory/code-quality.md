@@ -14,6 +14,9 @@ The project should optimize for strict Python quality from the beginning.
 - Development dependencies are in a single uv `dev` dependency group.
 - Current quality checks pass with `uv run ruff check .` and `uv run ty check .`.
 - Current server tests pass with pytest.
+- Local Windows pytest runs may need
+  `uv run pytest --basetemp .cache\pytest-tmp -p no:cacheprovider` because the
+  default temp/cache directories can have restrictive ACLs.
 - README.md lists the basic local quality and test commands:
   `uv run ruff check .`, `uv run ty check .`, `uv run pytest`, and
   `uv lock --check`.
