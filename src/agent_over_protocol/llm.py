@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Protocol, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from openai import AsyncOpenAI, OpenAIError
 
@@ -32,10 +33,19 @@ WORKSPACE_TOOL_INSTRUCTIONS = (
     "other workspace documents. Never claim you inspected a file unless a tool "
     "result supports it."
 )
+ChatRole = Literal["user", "assistant"]
 
 
 class ModelBackendError(RuntimeError):
     """Raised when the model backend cannot produce a usable response."""
+
+
+@dataclass(frozen=True, slots=True)
+class ChatMessage:
+    """A prior conversational message to include in model context."""
+
+    role: ChatRole
+    content: str
 
 
 class ChatBackend(Protocol):
@@ -46,6 +56,7 @@ class ChatBackend(Protocol):
         prompt: str,
         *,
         instructions: str | None = None,
+        history: Sequence[ChatMessage] = (),
         tools: Sequence[AgentTool] = (),
     ) -> str:
         """Return a response for a user prompt."""
@@ -92,6 +103,7 @@ class OpenRouterBackend:
         prompt: str,
         *,
         instructions: str | None = None,
+        history: Sequence[ChatMessage] = (),
         tools: Sequence[AgentTool] = (),
     ) -> str:
         """Return an OpenRouter chat completion for the prompt."""
@@ -99,13 +111,14 @@ class OpenRouterBackend:
             return await self._complete_with_tools(
                 prompt,
                 instructions=instructions,
+                history=history,
                 tools=tools,
             )
 
         try:
             response = await self._client.chat.completions.create(
                 model=self._model,
-                messages=_messages(prompt, instructions=instructions),
+                messages=_messages(prompt, instructions=instructions, history=history),
             )
         except OpenAIError as exc:
             message = "OpenRouter request failed"
@@ -127,6 +140,7 @@ class OpenRouterBackend:
         prompt: str,
         *,
         instructions: str | None,
+        history: Sequence[ChatMessage],
         tools: Sequence[AgentTool],
     ) -> str:
         messages = _messages(
@@ -135,6 +149,7 @@ class OpenRouterBackend:
                 instructions,
                 WORKSPACE_TOOL_INSTRUCTIONS,
             ),
+            history=history,
         )
         tool_index = {tool.name: tool for tool in tools}
         openai_tools = [tool.as_openai_tool() for tool in tools]
@@ -186,11 +201,21 @@ def _messages(
     prompt: str,
     *,
     instructions: str | None,
+    history: Sequence[ChatMessage] = (),
 ) -> list[ChatCompletionMessageParam]:
     messages: list[ChatCompletionMessageParam] = []
     system_instructions = (instructions or "").strip()
     if system_instructions:
         messages.append({"role": "system", "content": system_instructions})
+    for message in history:
+        content = message.content.strip()
+        if content:
+            messages.append(
+                cast(
+                    "ChatCompletionMessageParam",
+                    {"role": message.role, "content": content},
+                )
+            )
     messages.append({"role": "user", "content": prompt})
     return messages
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from a2a.server.agent_execution import SimpleRequestContextBuilder
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.routes.agent_card_routes import create_agent_card_routes
 from a2a.server.routes.jsonrpc_routes import create_jsonrpc_routes
@@ -41,14 +42,19 @@ def create_app(
     instruction_provider = FileInstructionProvider.from_settings(resolved_settings)
     tools = build_workspace_tools(resolved_settings)
     agent_card = build_agent_card(resolved_settings)
+    task_store = InMemoryTaskStore()
     request_handler = DefaultRequestHandler(
         agent_executor=OpenRouterAgentExecutor(
             resolved_backend,
             instruction_provider=instruction_provider,
             tools=tools,
         ),
-        task_store=InMemoryTaskStore(),
+        task_store=task_store,
         agent_card=agent_card,
+        request_context_builder=SimpleRequestContextBuilder(
+            should_populate_referred_tasks=True,
+            task_store=task_store,
+        ),
     )
 
     routes = [

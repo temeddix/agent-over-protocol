@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
     from pathlib import Path
 
+    from agent_over_protocol.llm import ChatMessage
     from agent_over_protocol.tools import AgentTool
 
 
@@ -29,6 +30,7 @@ class FakeBackend:
         self.response = response
         self.prompts: list[str] = []
         self.instructions: list[str | None] = []
+        self.histories: list[list[tuple[str, str]]] = []
         self.tool_names: list[list[str]] = []
 
     async def complete(
@@ -36,11 +38,13 @@ class FakeBackend:
         prompt: str,
         *,
         instructions: str | None = None,
+        history: Sequence[ChatMessage] = (),
         tools: Sequence[AgentTool] = (),
     ) -> str:
         """Capture the prompt and return the configured response."""
         self.prompts.append(prompt)
         self.instructions.append(instructions)
+        self.histories.append([(message.role, message.content) for message in history])
         self.tool_names.append([tool.name for tool in tools])
         return self.response
 
@@ -113,6 +117,88 @@ async def test_send_message_returns_completed_task() -> None:
     assert task["artifacts"][0]["name"] == "response"
     assert task["artifacts"][0]["parts"] == [{"text": "A2A test response"}]
     assert task["history"][0]["parts"] == [{"text": "hello"}]
+
+
+async def test_send_message_uses_stored_context_history() -> None:
+    """Messages sharing an A2A context ID pass prior chat history to the backend."""
+    backend = FakeBackend(response="First A2A response")
+    async with _client(backend) as client:
+        first_response = await client.post(
+            "/a2a",
+            headers=A2A_V1_HEADERS,
+            json=_send_message_request("first question"),
+        )
+        first_task = first_response.json()["result"]["task"]
+
+        backend.response = "Second A2A response"
+        second_response = await client.post(
+            "/a2a",
+            headers=A2A_V1_HEADERS,
+            json=_send_message_request(
+                "second question",
+                context_id=first_task["contextId"],
+                message_id="message-2",
+            ),
+        )
+
+    assert second_response.status_code == httpx.codes.OK
+    assert backend.prompts == ["first question", "second question"]
+    assert backend.histories[0] == []
+    assert ("user", "first question") in backend.histories[1]
+    assert ("assistant", "First A2A response") in backend.histories[1]
+    assert ("user", "second question") not in backend.histories[1]
+
+
+async def test_send_message_uses_fallback_history_without_context_id() -> None:
+    """Clients that omit context IDs still get process-local chat continuity."""
+    backend = FakeBackend(response="First A2A response")
+    async with _client(backend) as client:
+        first_response = await client.post(
+            "/a2a",
+            headers=A2A_V1_HEADERS,
+            json=_send_message_request("first question"),
+        )
+
+        backend.response = "Second A2A response"
+        second_response = await client.post(
+            "/a2a",
+            headers=A2A_V1_HEADERS,
+            json=_send_message_request("second question", message_id="message-2"),
+        )
+
+    assert first_response.status_code == httpx.codes.OK
+    assert second_response.status_code == httpx.codes.OK
+    assert backend.prompts == ["first question", "second question"]
+    assert backend.histories[0] == []
+    assert ("user", "first question") in backend.histories[1]
+    assert ("assistant", "First A2A response") in backend.histories[1]
+
+
+async def test_send_message_uses_reference_task_history() -> None:
+    """A2A reference task IDs are loaded and merged into model history."""
+    backend = FakeBackend(response="First A2A response")
+    async with _client(backend) as client:
+        first_response = await client.post(
+            "/a2a",
+            headers=A2A_V1_HEADERS,
+            json=_send_message_request("first question"),
+        )
+        first_task = first_response.json()["result"]["task"]
+
+        backend.response = "Second A2A response"
+        second_response = await client.post(
+            "/a2a",
+            headers=A2A_V1_HEADERS,
+            json=_send_message_request(
+                "second question",
+                message_id="message-2",
+                reference_task_ids=[first_task["id"]],
+            ),
+        )
+
+    assert second_response.status_code == httpx.codes.OK
+    assert backend.prompts == ["first question", "second question"]
+    assert ("user", "first question") in backend.histories[1]
 
 
 async def test_send_message_uses_runtime_context_file(tmp_path: Path) -> None:
@@ -193,17 +279,32 @@ async def test_health_endpoint() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def _send_message_request(text: str) -> dict[str, object]:
+def _send_message_request(
+    text: str,
+    *,
+    context_id: str | None = None,
+    message_id: str = "message-1",
+    reference_task_ids: list[str] | None = None,
+    task_id: str | None = None,
+) -> dict[str, object]:
+    message: dict[str, object] = {
+        "messageId": message_id,
+        "role": "ROLE_USER",
+        "parts": [{"text": text}],
+    }
+    if context_id is not None:
+        message["contextId"] = context_id
+    if task_id is not None:
+        message["taskId"] = task_id
+    if reference_task_ids is not None:
+        message["referenceTaskIds"] = reference_task_ids
+
     return {
         "jsonrpc": "2.0",
         "id": "request-1",
         "method": "SendMessage",
         "params": {
-            "message": {
-                "messageId": "message-1",
-                "role": "ROLE_USER",
-                "parts": [{"text": text}],
-            },
+            "message": message,
             "configuration": {"acceptedOutputModes": ["text/plain"]},
         },
     }

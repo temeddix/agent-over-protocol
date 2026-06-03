@@ -26,12 +26,19 @@ Keep the A2A protocol/server layer separate from the model backend. Treat OpenRo
 - Include both v0.3-compatible legacy fields and v1.0 `supportedInterfaces` in agent cards.
 - Publish an initial `Task` before status updates in task-mode streams because the current `a2a-sdk` request handler expects the task to exist first.
 - A2A v1 JSON-RPC requests should send the `A2A-Version: 1.0` header; the SDK treats missing version headers as v0.3.
+- `OpenRouterAgentExecutor` should pass prior conversational context to the model:
+  - consume incoming `RequestContext.current_task.history` when the SDK provides it;
+  - keep ordinary chat turns in an in-memory history keyed by A2A `context_id`;
+  - alias chat history by task IDs, `referenceTaskIds`, related tasks, safe conversation/thread metadata or headers, and a process-local fallback scope for clients that omit A2A context IDs;
+  - merge stored context history with incoming task history before calling `ChatBackend.complete(..., history=...)`.
+- A2A history controls protocol task state/history. Do not treat `historyLength` as model-side compact history or summarization. Compact summaries belong in the application/backend conversation layer if added later.
 
 ## Runtime Instructions And Tools
 
 - Provide runtime model instructions through `agent_over_protocol.context.FileInstructionProvider`.
 - Combine optional `AGENT_CONTEXT_COMMAND` output with optional `AGENT_CONTEXT_FILE` contents.
 - Load runtime instructions once per non-empty A2A request and pass them to `ChatBackend.complete(..., instructions=...)`.
+- Pass prior chat context to `ChatBackend.complete(..., history=...)`; the backend converts it into OpenAI-compatible chat messages before the current user prompt.
 - In the OpenRouter backend, send runtime instructions as a system message before the user prompt.
 - Build read-only workspace tools with `agent_over_protocol.tools.build_workspace_tools`.
 - Expose `list_files`, `read_file`, and `search_files` to the model through OpenRouter chat-completions tool calling.
