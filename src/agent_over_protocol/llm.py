@@ -243,12 +243,18 @@ async def _execute_tool_call(
 ) -> str:
     tool = tools.get(tool_call.function.name)
     if tool is None:
-        return f"Unknown tool: {tool_call.function.name}"
+        return json.dumps(
+            {"kind": "error", "error": f"Unknown tool: {tool_call.function.name}"},
+            ensure_ascii=False,
+        )
     try:
         arguments = _tool_arguments(tool_call.function.arguments)
         return await tool.call(arguments)
     except (ToolCallError, json.JSONDecodeError) as exc:
-        return f"Tool call failed: {exc}"
+        return json.dumps(
+            {"kind": "error", "error": f"Tool call failed: {exc}"},
+            ensure_ascii=False,
+        )
 
 
 def _tool_arguments(raw_arguments: str) -> Mapping[str, object]:

@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from agent_over_protocol.documents import DocumentReader, JsonObject
 from agent_over_protocol.workspace import Workspace, WorkspaceError
 
 if TYPE_CHECKING:
@@ -16,7 +18,7 @@ if TYPE_CHECKING:
     from agent_over_protocol.settings import Settings
 
 
-ToolHandler = Callable[[Mapping[str, object]], Awaitable[str]]
+ToolHandler = Callable[[Mapping[str, object]], Awaitable[JsonObject]]
 
 
 class ToolCallError(RuntimeError):
@@ -35,9 +37,10 @@ class AgentTool:
     async def call(self, arguments: Mapping[str, object]) -> str:
         """Execute the tool with validated arguments."""
         try:
-            return await self.handler(arguments)
+            result = await self.handler(arguments)
         except WorkspaceError as exc:
             raise ToolCallError(str(exc)) from exc
+        return json.dumps(result, ensure_ascii=False)
 
     def as_openai_tool(self) -> ChatCompletionToolParam:
         """Return this tool as an OpenAI-compatible function definition."""
@@ -53,24 +56,31 @@ class AgentTool:
 
 def build_workspace_tools(settings: Settings) -> list[AgentTool]:
     """Build read-only file workspace tools from settings."""
+    document_reader = DocumentReader(
+        tika_url=settings.tika_url,
+        tika_timeout_seconds=settings.tika_timeout_seconds,
+        max_spreadsheet_rows=settings.agent_spreadsheet_max_rows,
+        max_spreadsheet_columns=settings.agent_spreadsheet_max_columns,
+    )
     workspace = Workspace(
         root=Path(settings.agent_workspace_root),
         max_read_chars=settings.agent_workspace_max_read_chars,
         max_list_entries=settings.agent_workspace_max_list_entries,
         max_search_results=settings.agent_workspace_max_search_results,
         max_search_file_bytes=settings.agent_workspace_max_search_file_bytes,
+        document_reader=document_reader,
     )
 
-    async def list_files(arguments: Mapping[str, object]) -> str:
+    async def list_files(arguments: Mapping[str, object]) -> JsonObject:
         return await workspace.list_directory(_string_argument(arguments, "path", "."))
 
-    async def read_file(arguments: Mapping[str, object]) -> str:
+    async def read_file(arguments: Mapping[str, object]) -> JsonObject:
         return await workspace.read_file(
             _string_argument(arguments, "path", "."),
             max_chars=_int_argument(arguments, "max_chars", None),
         )
 
-    async def search_files(arguments: Mapping[str, object]) -> str:
+    async def search_files(arguments: Mapping[str, object]) -> JsonObject:
         return await workspace.search_files(
             _string_argument(arguments, "query", ""),
             _string_argument(arguments, "path", "."),
@@ -102,8 +112,8 @@ def build_workspace_tools(settings: Settings) -> list[AgentTool]:
             name="read_file",
             description=(
                 "Read a supported file or document from the read-only workspace. "
-                "Supports text, Markdown, CSV, JSON, HTML/XML, .docx, "
-                ".xlsx/.xlsm, and .pptx."
+                "Returns structured JSON. Excel files include sheets, rows, "
+                "and cell addresses; other documents use Tika text and metadata."
             ),
             parameters={
                 "type": "object",

@@ -9,9 +9,11 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 from agent_over_protocol.documents import (
+    DocumentReader,
     DocumentReadError,
+    JsonObject,
+    JsonValue,
     is_supported_document,
-    read_document,
 )
 
 if TYPE_CHECKING:
@@ -31,20 +33,67 @@ class Workspace:
     max_list_entries: int
     max_search_results: int
     max_search_file_bytes: int
+    document_reader: DocumentReader
 
-    async def list_directory(self, path: str = ".") -> str:
+    async def list_directory(self, path: str = ".") -> JsonObject:
         """List files in a workspace directory."""
         return await asyncio.to_thread(self._list_directory_sync, path)
 
-    async def read_file(self, path: str, *, max_chars: int | None = None) -> str:
+    async def read_file(self, path: str, *, max_chars: int | None = None) -> JsonObject:
         """Read a supported file from the workspace."""
-        return await asyncio.to_thread(self._read_file_sync, path, max_chars)
+        file_path = await asyncio.to_thread(self._resolve_file_sync, path)
+        read_chars = max_chars if max_chars is not None else self.max_read_chars
+        try:
+            document = await self.document_reader.read(file_path, max_chars=read_chars)
+        except DocumentReadError as exc:
+            raise WorkspaceError(str(exc)) from exc
+        return {
+            "kind": "file",
+            "path": _display_path(self.root, file_path),
+            "document": document,
+        }
 
-    async def search_files(self, query: str, path: str = ".") -> str:
+    async def search_files(self, query: str, path: str = ".") -> JsonObject:
         """Search supported files under a workspace path."""
-        return await asyncio.to_thread(self._search_files_sync, query, path)
+        normalized_query = query.strip()
+        if not normalized_query:
+            message = "Search query cannot be empty."
+            raise WorkspaceError(message)
 
-    def _list_directory_sync(self, path: str) -> str:
+        start = await asyncio.to_thread(self._resolve_existing, path)
+        candidates = await asyncio.to_thread(self._search_candidates_sync, start)
+        results: list[JsonValue] = []
+        truncated = False
+
+        for file_path in candidates:
+            if len(results) >= self.max_search_results:
+                truncated = True
+                break
+            try:
+                text = await self.document_reader.extract_text(
+                    file_path,
+                    max_chars=self.max_read_chars,
+                )
+            except DocumentReadError:
+                continue
+            snippet = _first_match_snippet(text, normalized_query)
+            if snippet is not None:
+                results.append(
+                    {
+                        "path": _display_path(self.root, file_path),
+                        "snippet": snippet,
+                    }
+                )
+
+        return {
+            "kind": "search_results",
+            "query": normalized_query,
+            "path": _display_path(self.root, start),
+            "results": results,
+            "truncated": truncated,
+        }
+
+    def _list_directory_sync(self, path: str) -> JsonObject:
         directory = self._resolve_existing(path)
         if not directory.is_dir():
             message = f"Not a directory: {_display_path(self.root, directory)}"
@@ -54,53 +103,32 @@ class Workspace:
             directory.iterdir(),
             key=lambda item: (not item.is_dir(), item.name.lower()),
         )
-        lines = [f"Directory: {_display_path(self.root, directory)}"]
-        for entry in entries[: self.max_list_entries]:
-            if not _is_inside(self.root, entry):
-                continue
-            lines.append(_format_entry(entry))
-        if len(entries) > self.max_list_entries:
-            lines.append(f"[Truncated after {self.max_list_entries} entries.]")
-        return "\n".join(lines)
+        visible_entries: list[JsonValue] = [
+            _format_entry(self.root, entry)
+            for entry in entries[: self.max_list_entries]
+            if _is_inside(self.root, entry)
+        ]
+        return {
+            "kind": "directory",
+            "path": _display_path(self.root, directory),
+            "entries": visible_entries,
+            "truncated": len(entries) > self.max_list_entries,
+        }
 
-    def _read_file_sync(self, path: str, max_chars: int | None) -> str:
+    def _resolve_file_sync(self, path: str) -> Path:
         file_path = self._resolve_existing(path)
         if not file_path.is_file():
             message = f"Not a file: {_display_path(self.root, file_path)}"
             raise WorkspaceError(message)
-        read_chars = max_chars if max_chars is not None else self.max_read_chars
-        try:
-            content = read_document(file_path, max_chars=read_chars)
-        except DocumentReadError as exc:
-            raise WorkspaceError(str(exc)) from exc
-        return f"Path: {_display_path(self.root, file_path)}\n\n{content}"
+        return file_path
 
-    def _search_files_sync(self, query: str, path: str) -> str:
-        normalized_query = query.strip()
-        if not normalized_query:
-            message = "Search query cannot be empty."
-            raise WorkspaceError(message)
-        start = self._resolve_existing(path)
-        candidates = _walk_files(start) if start.is_dir() else [start]
-        results: list[str] = []
-        for file_path in candidates:
-            if len(results) >= self.max_search_results:
-                break
-            if not _is_searchable(self.root, file_path):
-                continue
-            try:
-                if file_path.stat().st_size > self.max_search_file_bytes:
-                    continue
-                content = read_document(file_path, max_chars=self.max_read_chars)
-            except DocumentReadError, OSError:
-                continue
-            snippet = _first_match_snippet(content, normalized_query)
-            if snippet is not None:
-                results.append(f"{_display_path(self.root, file_path)}: {snippet}")
-        if not results:
-            display_path = _display_path(self.root, start)
-            return f"No matches for {normalized_query!r} under {display_path}."
-        return "\n".join(results)
+    def _search_candidates_sync(self, start: Path) -> list[Path]:
+        return [
+            file_path
+            for file_path in _walk_files(start)
+            if _is_searchable(self.root, file_path)
+            and _is_within_size_limit(file_path, self.max_search_file_bytes)
+        ]
 
     def _resolve_existing(self, path: str) -> Path:
         try:
@@ -144,14 +172,17 @@ def _is_inside(root: Path, path: Path) -> bool:
     return True
 
 
-def _format_entry(path: Path) -> str:
-    kind = "DIR" if path.is_dir() else "FILE"
-    suffix = "/" if path.is_dir() else ""
+def _format_entry(root: Path, path: Path) -> JsonObject:
     try:
-        size = "" if path.is_dir() else f" {path.stat().st_size} bytes"
+        size: int | None = None if path.is_dir() else path.stat().st_size
     except OSError:
-        size = ""
-    return f"[{kind}] {path.name}{suffix}{size}"
+        size = None
+    return {
+        "kind": "directory" if path.is_dir() else "file",
+        "name": path.name,
+        "path": _display_path(root, path),
+        "size_bytes": size,
+    }
 
 
 def _display_path(root: Path, path: Path) -> str:
@@ -164,9 +195,14 @@ def _display_path(root: Path, path: Path) -> str:
 
 
 def _walk_files(path: Path) -> Iterable[Path]:
-    for child in sorted(path.rglob("*"), key=lambda item: item.as_posix().lower()):
-        if child.is_file():
-            yield child
+    if path.is_file():
+        yield path
+        return
+    yield from (
+        child
+        for child in sorted(path.rglob("*"), key=lambda item: item.as_posix().lower())
+        if child.is_file()
+    )
 
 
 def _first_match_snippet(content: str, query: str) -> str | None:
@@ -179,3 +215,10 @@ def _first_match_snippet(content: str, query: str) -> str | None:
 
 def _is_searchable(root: Path, path: Path) -> bool:
     return _is_inside(root, path) and is_supported_document(path)
+
+
+def _is_within_size_limit(path: Path, max_bytes: int) -> bool:
+    try:
+        return path.stat().st_size <= max_bytes
+    except OSError:
+        return False

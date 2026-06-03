@@ -12,6 +12,8 @@ services:
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
     volumes:
       - agent-context:/context:ro
+    depends_on:
+      - tika
     healthcheck:
       test:
         - CMD
@@ -38,6 +40,10 @@ services:
       - /srv
       - --database
       - /database/filebrowser.db
+
+  tika:
+    image: apache/tika:latest-full
+    restart: unless-stopped
 
 volumes:
   agent-context:

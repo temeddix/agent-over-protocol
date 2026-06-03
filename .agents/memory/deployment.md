@@ -24,6 +24,8 @@ Production deployment is expected to run through Compose/Portainer.
   edits the same mounted directory through `/srv`.
 - The A2A agent can browse the same `agent-context` named volume through
   read-only model tools rooted at `/context`.
+- Compose runs an internal `tika` sidecar with `apache/tika:latest-full`; it is
+  not exposed on a host port and is reached by AOP at `http://tika:9998`.
 - File Browser maps `${FILEBROWSER_PORT}` to container port `80` and stores
   its database in the `filebrowser-database` named volume.
 - `/healthz` is used for container health checks.

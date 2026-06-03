@@ -1,24 +1,27 @@
 # Copyright (c) 2026 Danny Kim
-"""Document text extraction for workspace files."""
+"""Structured document extraction for workspace files."""
 
 from __future__ import annotations
 
+import asyncio
 import csv
-import re
-import zipfile
+from dataclasses import dataclass
 from html.parser import HTMLParser
 from io import StringIO
 from typing import TYPE_CHECKING
-from xml.etree import ElementTree as ET
+
+import httpx
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
-WORD_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-DRAWING_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
-SPREADSHEET_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
-REL_NS = "{http://schemas.openxmlformats.org/package/2006/relationships}"
-OFFICE_REL_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+type JsonValue = (
+    str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
+)
+type JsonObject = dict[str, JsonValue]
 
 TEXT_SUFFIXES = {
     ".cfg",
@@ -42,34 +45,162 @@ TEXT_SUFFIXES = {
     ".yaml",
     ".yml",
 }
-OOXML_SUFFIXES = {".docx", ".pptx", ".xlsx", ".xlsm"}
-LEGACY_OFFICE_SUFFIXES = {".doc", ".ppt", ".xls"}
-SUPPORTED_SUFFIXES = TEXT_SUFFIXES | OOXML_SUFFIXES
+SPREADSHEET_SUFFIXES = {".xlsx", ".xlsm"}
+TIKA_SUFFIXES = {
+    ".doc",
+    ".docx",
+    ".epub",
+    ".htm",
+    ".odf",
+    ".odg",
+    ".odp",
+    ".ods",
+    ".odt",
+    ".pdf",
+    ".ppt",
+    ".pptx",
+    ".rtf",
+    ".xls",
+}
+SUPPORTED_SUFFIXES = TEXT_SUFFIXES | SPREADSHEET_SUFFIXES | TIKA_SUFFIXES
 
 
 class DocumentReadError(RuntimeError):
-    """Raised when a document cannot be extracted as text."""
+    """Raised when a document cannot be extracted."""
 
 
-def read_document(path: Path, *, max_chars: int) -> str:
-    """Read a file or document as plain text."""
-    suffix = path.suffix.lower()
-    if suffix in LEGACY_OFFICE_SUFFIXES:
-        message = (
-            f"{suffix} is a legacy binary Office format. Save it as an OOXML "
-            "file such as .docx, .xlsx, or .pptx first."
-        )
+@dataclass(frozen=True)
+class DocumentReader:
+    """Read workspace documents into JSON-serializable structures."""
+
+    tika_url: str
+    tika_timeout_seconds: float
+    max_spreadsheet_rows: int
+    max_spreadsheet_columns: int
+
+    async def read(self, path: Path, *, max_chars: int) -> JsonObject:
+        """Read a file as a structured JSON-compatible result."""
+        suffix = path.suffix.lower()
+        if suffix in SPREADSHEET_SUFFIXES:
+            return await asyncio.to_thread(
+                self._read_spreadsheet_sync,
+                path,
+                max_chars,
+            )
+        if suffix in TEXT_SUFFIXES or not suffix:
+            return await asyncio.to_thread(self._read_text_sync, path, max_chars)
+        if suffix in TIKA_SUFFIXES:
+            return await self._read_with_tika(path, max_chars=max_chars)
+
+        message = f"Unsupported file type: {suffix or 'no extension'}"
         raise DocumentReadError(message)
-    if suffix == ".docx":
-        return _truncate(_read_docx(path), max_chars)
-    if suffix == ".pptx":
-        return _truncate(_read_pptx(path), max_chars)
-    if suffix in {".xlsx", ".xlsm"}:
-        return _truncate(_read_xlsx(path), max_chars)
-    if suffix in TEXT_SUFFIXES or not suffix:
-        return _truncate(_read_text_file(path), max_chars)
-    message = f"Unsupported file type: {suffix or 'no extension'}"
-    raise DocumentReadError(message)
+
+    async def extract_text(self, path: Path, *, max_chars: int) -> str:
+        """Extract searchable plain text from a document."""
+        document = await self.read(path, max_chars=max_chars)
+        return document_text(document)
+
+    def _read_text_sync(self, path: Path, max_chars: int) -> JsonObject:
+        raw_text = _decode_text(path.read_bytes())
+        suffix = path.suffix.lower()
+        if suffix in {".csv", ".tsv"}:
+            rows = _delimited_rows(
+                raw_text,
+                delimiter="\t" if suffix == ".tsv" else ",",
+            )
+            text = _rows_text(rows)
+            return {
+                "kind": "table",
+                "format": suffix.lstrip(".") or "text",
+                "rows": rows,
+                "text": _truncate(text, max_chars),
+            }
+        if suffix in {".html", ".xml"}:
+            raw_text = _strip_html(raw_text)
+        return {
+            "kind": "text_document",
+            "format": suffix.lstrip(".") or "text",
+            "text": _truncate(raw_text, max_chars),
+        }
+
+    def _read_spreadsheet_sync(self, path: Path, max_chars: int) -> JsonObject:
+        try:
+            workbook = load_workbook(
+                path,
+                read_only=True,
+                data_only=True,
+            )
+        except OSError as exc:
+            message = "Spreadsheet could not be read"
+            raise DocumentReadError(message) from exc
+
+        sheets: list[JsonValue] = []
+        text_parts: list[str] = []
+        truncated = False
+        for worksheet in workbook.worksheets:
+            rows: list[JsonValue] = []
+            for row_index, row in enumerate(worksheet.iter_rows(), start=1):
+                if row_index > self.max_spreadsheet_rows:
+                    truncated = True
+                    break
+                cells: list[JsonValue] = []
+                for column_index, cell in enumerate(row, start=1):
+                    if column_index > self.max_spreadsheet_columns:
+                        truncated = True
+                        break
+                    value = _json_cell_value(cell.value)
+                    if value is None:
+                        continue
+                    address = f"{get_column_letter(column_index)}{row_index}"
+                    cells.append(
+                        {
+                            "address": address,
+                            "row": row_index,
+                            "column": get_column_letter(column_index),
+                            "value": value,
+                        }
+                    )
+                if cells:
+                    rows.append({"index": row_index, "cells": cells})
+                    text_parts.append(_spreadsheet_row_text(worksheet.title, cells))
+            sheets.append({"name": worksheet.title, "rows": rows})
+
+        return {
+            "kind": "spreadsheet",
+            "format": path.suffix.lower().lstrip("."),
+            "sheets": sheets,
+            "text": _truncate("\n".join(text_parts), max_chars),
+            "truncated": truncated,
+        }
+
+    async def _read_with_tika(self, path: Path, *, max_chars: int) -> JsonObject:
+        data = await asyncio.to_thread(path.read_bytes)
+        endpoint = self.tika_url.rstrip("/") + "/rmeta/text"
+        try:
+            async with httpx.AsyncClient(timeout=self.tika_timeout_seconds) as client:
+                response = await client.put(
+                    endpoint,
+                    content=data,
+                    headers={
+                        "Accept": "application/json",
+                        "Content-Type": "application/octet-stream",
+                        "Content-Disposition": f'attachment; filename="{path.name}"',
+                    },
+                )
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            message = "Tika document extraction failed"
+            raise DocumentReadError(message) from exc
+
+        metadata_items = _parse_tika_response(response)
+        text = _tika_text(metadata_items)
+        metadata = _tika_metadata(metadata_items)
+        return {
+            "kind": "text_document",
+            "format": path.suffix.lower().lstrip("."),
+            "metadata": metadata,
+            "text": _truncate(text, max_chars),
+        }
 
 
 def is_supported_document(path: Path) -> bool:
@@ -78,15 +209,12 @@ def is_supported_document(path: Path) -> bool:
     return suffix in SUPPORTED_SUFFIXES or not suffix
 
 
-def _read_text_file(path: Path) -> str:
-    data = path.read_bytes()
-    text = _decode_text(data)
-    suffix = path.suffix.lower()
-    if suffix in {".html", ".xml"}:
-        return _strip_html(text)
-    if suffix in {".csv", ".tsv"}:
-        return _read_delimited_text(text, delimiter="\t" if suffix == ".tsv" else ",")
-    return text
+def document_text(document: JsonObject) -> str:
+    """Return a plain text view of a structured document result."""
+    text = document.get("text")
+    if isinstance(text, str):
+        return text
+    return _flatten_json_text(document)
 
 
 def _decode_text(data: bytes) -> str:
@@ -98,12 +226,34 @@ def _decode_text(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def _read_delimited_text(text: str, *, delimiter: str) -> str:
+def _delimited_rows(text: str, *, delimiter: str) -> list[JsonValue]:
     reader = csv.reader(StringIO(text), delimiter=delimiter)
-    lines: list[str] = []
+    rows: list[JsonValue] = []
     for index, row in enumerate(reader, start=1):
-        values = " | ".join(cell.strip() for cell in row)
-        lines.append(f"{index}: {values}")
+        rows.append(
+            {
+                "index": index,
+                "cells": [
+                    {"index": column_index, "value": value}
+                    for column_index, value in enumerate(row, start=1)
+                ],
+            }
+        )
+    return rows
+
+
+def _rows_text(rows: Iterable[JsonValue]) -> str:
+    lines: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        cells = row.get("cells")
+        if not isinstance(cells, list):
+            continue
+        values = [
+            str(cell.get("value", "")) for cell in cells if isinstance(cell, dict)
+        ]
+        lines.append(f"{row.get('index')}: {' | '.join(values)}")
     return "\n".join(lines)
 
 
@@ -128,218 +278,77 @@ class _TextHTMLParser(HTMLParser):
             self._parts.append(stripped)
 
 
-def _read_docx(path: Path) -> str:
-    try:
-        with zipfile.ZipFile(path) as archive:
-            names = [
-                "word/document.xml",
-                *sorted(
-                    name
-                    for name in archive.namelist()
-                    if name.startswith(("word/header", "word/footer", "word/footnotes"))
-                    and name.endswith(".xml")
-                ),
-            ]
-            parts: list[str] = []
-            for name in names:
-                if name in archive.namelist():
-                    parts.extend(_word_paragraphs(archive.read(name)))
-    except zipfile.BadZipFile as exc:
-        message = "Invalid .docx file"
-        raise DocumentReadError(message) from exc
-    return "\n".join(parts)
+def _json_cell_value(value: object) -> JsonValue:
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    return str(value)
 
 
-def _word_paragraphs(data: bytes) -> list[str]:
-    root = _parse_xml(data)
-    paragraphs: list[str] = []
-    for paragraph in root.iter(f"{WORD_NS}p"):
-        parts: list[str] = []
-        for child in paragraph.iter():
-            if child.tag == f"{WORD_NS}t" and child.text:
-                parts.append(child.text)
-            elif child.tag == f"{WORD_NS}tab":
-                parts.append("\t")
-            elif child.tag == f"{WORD_NS}br":
-                parts.append("\n")
-        text = "".join(parts).strip()
-        if text:
-            paragraphs.append(text)
-    return paragraphs
-
-
-def _read_pptx(path: Path) -> str:
-    try:
-        with zipfile.ZipFile(path) as archive:
-            slide_names = sorted(
-                (
-                    name
-                    for name in archive.namelist()
-                    if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)
-                ),
-                key=_slide_number,
-            )
-            slides: list[str] = []
-            for index, name in enumerate(slide_names, start=1):
-                lines = _drawing_text_lines(archive.read(name))
-                if lines:
-                    rendered_lines = "\n".join(f"- {line}" for line in lines)
-                    slides.append(f"Slide {index}\n{rendered_lines}")
-    except zipfile.BadZipFile as exc:
-        message = "Invalid .pptx file"
-        raise DocumentReadError(message) from exc
-    return "\n\n".join(slides)
-
-
-def _slide_number(name: str) -> int:
-    match = re.search(r"slide(\d+)\.xml$", name)
-    if match is None:
-        return 0
-    return int(match.group(1))
-
-
-def _drawing_text_lines(data: bytes) -> list[str]:
-    root = _parse_xml(data)
-    return [
-        text.text.strip()
-        for text in root.iter(f"{DRAWING_NS}t")
-        if text.text and text.text.strip()
+def _spreadsheet_row_text(sheet_name: str, cells: list[JsonValue]) -> str:
+    rendered_cells = [
+        f"{cell.get('address')}={cell.get('value')}"
+        for cell in cells
+        if isinstance(cell, dict)
     ]
+    return f"{sheet_name}: {' | '.join(rendered_cells)}"
 
 
-def _read_xlsx(path: Path) -> str:
+def _parse_tika_response(response: httpx.Response) -> list[dict[str, JsonValue]]:
     try:
-        with zipfile.ZipFile(path) as archive:
-            shared_strings = _xlsx_shared_strings(archive)
-            sheets = _xlsx_sheets(archive)
-            sections: list[str] = []
-            for sheet_name, sheet_path in sheets:
-                if sheet_path not in archive.namelist():
-                    continue
-                rows = _xlsx_rows(archive.read(sheet_path), shared_strings)
-                if rows:
-                    sections.append(f"Sheet: {sheet_name}\n" + _format_xlsx_rows(rows))
-    except zipfile.BadZipFile as exc:
-        message = "Invalid .xlsx file"
-        raise DocumentReadError(message) from exc
-    return "\n\n".join(sections)
-
-
-def _xlsx_shared_strings(archive: zipfile.ZipFile) -> list[str]:
-    if "xl/sharedStrings.xml" not in archive.namelist():
-        return []
-    root = _parse_xml(archive.read("xl/sharedStrings.xml"))
-    strings: list[str] = []
-    for item in root.iter(f"{SPREADSHEET_NS}si"):
-        parts = [text.text or "" for text in item.iter(f"{SPREADSHEET_NS}t")]
-        strings.append("".join(parts))
-    return strings
-
-
-def _xlsx_sheets(archive: zipfile.ZipFile) -> list[tuple[str, str]]:
-    if "xl/workbook.xml" not in archive.namelist():
-        return []
-    relationships = _xlsx_relationships(archive)
-    root = _parse_xml(archive.read("xl/workbook.xml"))
-    sheets: list[tuple[str, str]] = []
-    for sheet in root.iter(f"{SPREADSHEET_NS}sheet"):
-        name = sheet.attrib.get("name", "Sheet")
-        relationship_id = sheet.attrib.get(f"{OFFICE_REL_NS}id")
-        target = relationships.get(relationship_id or "")
-        if target is not None:
-            sheets.append((name, f"xl/{target.lstrip('/')}"))
-    if sheets:
-        return sheets
-    worksheet_names = sorted(
-        (
-            name
-            for name in archive.namelist()
-            if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", name)
-        ),
-        key=_worksheet_number,
-    )
-    return [
-        (f"Sheet {index}", name) for index, name in enumerate(worksheet_names, start=1)
-    ]
-
-
-def _xlsx_relationships(archive: zipfile.ZipFile) -> dict[str, str]:
-    if "xl/_rels/workbook.xml.rels" not in archive.namelist():
-        return {}
-    root = _parse_xml(archive.read("xl/_rels/workbook.xml.rels"))
-    relationships: dict[str, str] = {}
-    for relationship in root.iter(f"{REL_NS}Relationship"):
-        relationship_id = relationship.attrib.get("Id")
-        target = relationship.attrib.get("Target")
-        if relationship_id is not None and target is not None:
-            relationships[relationship_id] = target
-    return relationships
-
-
-def _worksheet_number(name: str) -> int:
-    match = re.search(r"sheet(\d+)\.xml$", name)
-    if match is None:
-        return 0
-    return int(match.group(1))
-
-
-def _xlsx_rows(
-    data: bytes,
-    shared_strings: list[str],
-) -> list[tuple[int, list[tuple[str, str]]]]:
-    root = _parse_xml(data)
-    rows: list[tuple[int, list[tuple[str, str]]]] = []
-    for row in root.iter(f"{SPREADSHEET_NS}row"):
-        row_index = _int_or_zero(row.attrib.get("r"))
-        values: list[tuple[str, str]] = []
-        for cell in row.iter(f"{SPREADSHEET_NS}c"):
-            value = _xlsx_cell_value(cell, shared_strings)
-            if value:
-                values.append((_cell_column(cell.attrib.get("r", "")), value))
-        if values:
-            rows.append((row_index, values))
-    return rows
-
-
-def _xlsx_cell_value(element: ET.Element, shared_strings: list[str]) -> str:
-    cell_type = element.attrib.get("t")
-    if cell_type == "inlineStr":
-        inline_parts = [text.text or "" for text in element.iter(f"{SPREADSHEET_NS}t")]
-        return "".join(inline_parts).strip()
-    value = element.find(f"{SPREADSHEET_NS}v")
-    if value is None or value.text is None:
-        return ""
-    raw = value.text.strip()
-    if cell_type == "s":
-        index = _int_or_zero(raw)
-        if 0 <= index < len(shared_strings):
-            return shared_strings[index].strip()
-    return raw
-
-
-def _format_xlsx_row(row_index: int, values: list[tuple[str, str]]) -> str:
-    rendered = " | ".join(f"{column}={value}" for column, value in values)
-    return f"{row_index}: {rendered}"
-
-
-def _format_xlsx_rows(rows: list[tuple[int, list[tuple[str, str]]]]) -> str:
-    return "\n".join(_format_xlsx_row(row_index, values) for row_index, values in rows)
-
-
-def _cell_column(cell_reference: str) -> str:
-    match = re.match(r"([A-Z]+)", cell_reference)
-    if match is None:
-        return "?"
-    return match.group(1)
-
-
-def _int_or_zero(value: str | None) -> int:
-    if value is None:
-        return 0
-    try:
-        return int(value)
+        parsed: object = response.json()
     except ValueError:
-        return 0
+        return [{"X-TIKA:content": response.text}]
+    if isinstance(parsed, list):
+        return [_json_object(item) for item in parsed if isinstance(item, dict)]
+    if isinstance(parsed, dict):
+        return [_json_object(parsed)]
+    return [{"X-TIKA:content": str(parsed)}]
+
+
+def _json_object(value: object) -> dict[str, JsonValue]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): _json_value(item) for key, item in value.items()}
+
+
+def _json_value(value: object) -> JsonValue:
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if isinstance(value, list):
+        return [_json_value(item) for item in value]
+    if isinstance(value, dict):
+        return _json_object(value)
+    return str(value)
+
+
+def _tika_text(items: list[dict[str, JsonValue]]) -> str:
+    parts: list[str] = []
+    for item in items:
+        content = item.get("X-TIKA:content")
+        if isinstance(content, str) and content.strip():
+            parts.append(content.strip())
+    return "\n\n".join(parts)
+
+
+def _tika_metadata(items: list[dict[str, JsonValue]]) -> JsonObject:
+    metadata: JsonObject = {}
+    for item in items:
+        for key, value in item.items():
+            if key != "X-TIKA:content":
+                metadata[key] = value
+    return metadata
+
+
+def _flatten_json_text(value: JsonValue) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, int | float | bool):
+        return str(value)
+    if isinstance(value, list):
+        return "\n".join(_flatten_json_text(item) for item in value)
+    return "\n".join(_flatten_json_text(item) for item in value.values())
 
 
 def _truncate(content: str, max_chars: int) -> str:
@@ -350,8 +359,3 @@ def _truncate(content: str, max_chars: int) -> str:
         f"{stripped[:max_chars].rstrip()}\n\n"
         f"[Document truncated to {max_chars} characters.]"
     )
-
-
-def _parse_xml(data: bytes) -> ET.Element:
-    # OOXML files are user-controlled local documents; keep XML parsing isolated.
-    return ET.fromstring(data)  # noqa: S314

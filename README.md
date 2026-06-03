@@ -59,9 +59,9 @@ A2A agent. The agent reads `/context/AGENTS.md` on each model request.
 
 The A2A agent can browse the same named volume through read-only workspace
 tools. It can list folders, read supported files, and search text under
-`/context`. Supported extraction includes text-like files, Markdown, CSV/TSV,
-JSON/YAML/TOML, HTML/XML, `.docx`, `.xlsx`/`.xlsm`, and `.pptx`. Legacy binary
-Office files such as `.doc`, `.xls`, and `.ppt` should be saved as OOXML first.
+`/context`. Excel files (`.xlsx`/`.xlsm`) are read with `openpyxl` and returned
+as structured sheets, rows, and cells. Other document formats are extracted
+through the internal Tika sidecar and returned as JSON with text plus metadata.
 
 ## Container Build Context
 

@@ -31,6 +31,10 @@ The server is built as a Starlette ASGI app using `a2a-sdk` route helpers.
   Tools are built by `agent_over_protocol.tools.build_workspace_tools`.
 - OpenRouter chat completions use function/tool calling for `list_files`,
   `read_file`, and `search_files`; tool calls are executed server-side and fed
-  back into the model before returning the final A2A answer.
+  back into the model as JSON strings before returning the final A2A answer.
 - Workspace access is rooted at `Settings.agent_workspace_root`, currently
   `/context`, and rejects parent-directory traversal or drive-qualified paths.
+- Document extraction uses `agent_over_protocol.documents.DocumentReader`.
+  Excel `.xlsx`/`.xlsm` files are read with openpyxl into structured sheets,
+  rows, and cells. Other broad document formats are extracted through Tika at
+  `Settings.tika_url`, currently `http://tika:9998`.

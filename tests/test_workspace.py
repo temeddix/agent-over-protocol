@@ -3,15 +3,18 @@
 
 from __future__ import annotations
 
-import zipfile
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
+from openpyxl import Workbook
 
+from agent_over_protocol.documents import DocumentReader, JsonObject
 from agent_over_protocol.workspace import Workspace, WorkspaceError
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from pytest_httpx import HTTPXMock
 
 
 async def test_workspace_lists_reads_and_searches_text_files(tmp_path: Path) -> None:
@@ -24,25 +27,96 @@ async def test_workspace_lists_reads_and_searches_text_files(tmp_path: Path) -> 
     content = await workspace.read_file("notes.md")
     matches = await workspace.search_files("문서탐색")
 
-    assert "[FILE] notes.md" in listing
-    assert "Find this Korean keyword" in content
-    assert "notes.md:" in matches
+    assert listing["entries"] == [
+        {
+            "kind": "file",
+            "name": "notes.md",
+            "path": "notes.md",
+            "size_bytes": notes.stat().st_size,
+        }
+    ]
+    document = cast("JsonObject", content["document"])
+    assert document["kind"] == "text_document"
+    text = document["text"]
+    assert isinstance(text, str)
+    assert "Find this Korean keyword" in text
+    assert matches["results"] == [
+        {
+            "path": "notes.md",
+            "snippet": "Find this Korean keyword: 문서탐색",
+        }
+    ]
 
 
-async def test_workspace_reads_office_ooxml_documents(tmp_path: Path) -> None:
-    """The workspace extracts text from docx, pptx, and xlsx files."""
-    _write_docx(tmp_path / "report.docx", "Word document body")
-    _write_pptx(tmp_path / "deck.pptx", "PowerPoint slide text")
-    _write_xlsx(tmp_path / "sheet.xlsx", "Excel cell text")
+async def test_workspace_reads_excel_as_structured_sheets(tmp_path: Path) -> None:
+    """Excel files are returned as sheets, rows, and addressed cells."""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Budget"
+    sheet["A1"] = "Item"
+    sheet["B1"] = "Amount"
+    sheet["A2"] = "Hosting"
+    sheet["B2"] = 42
+    workbook.save(tmp_path / "budget.xlsx")
     workspace = _workspace(tmp_path)
 
-    docx = await workspace.read_file("report.docx")
-    pptx = await workspace.read_file("deck.pptx")
-    xlsx = await workspace.read_file("sheet.xlsx")
+    result = await workspace.read_file("budget.xlsx")
 
-    assert "Word document body" in docx
-    assert "PowerPoint slide text" in pptx
-    assert "A=Excel cell text" in xlsx
+    document = cast("JsonObject", result["document"])
+    assert document["kind"] == "spreadsheet"
+    assert document["sheets"] == [
+        {
+            "name": "Budget",
+            "rows": [
+                {
+                    "index": 1,
+                    "cells": [
+                        {"address": "A1", "row": 1, "column": "A", "value": "Item"},
+                        {"address": "B1", "row": 1, "column": "B", "value": "Amount"},
+                    ],
+                },
+                {
+                    "index": 2,
+                    "cells": [
+                        {"address": "A2", "row": 2, "column": "A", "value": "Hosting"},
+                        {"address": "B2", "row": 2, "column": "B", "value": 42},
+                    ],
+                },
+            ],
+        }
+    ]
+    text = document["text"]
+    assert isinstance(text, str)
+    assert "Budget: A2=Hosting | B2=42" in text
+
+
+async def test_workspace_uses_tika_for_pdf_documents(
+    tmp_path: Path,
+    httpx_mock: HTTPXMock,
+) -> None:
+    """Non-spreadsheet binary documents are extracted through Tika."""
+    pdf = tmp_path / "report.pdf"
+    pdf.write_bytes(b"%PDF-pretend")
+    httpx_mock.add_response(
+        method="PUT",
+        url="http://tika.test/rmeta/text",
+        json=[
+            {
+                "Content-Type": "application/pdf",
+                "X-TIKA:content": "Extracted PDF text",
+            }
+        ],
+    )
+    workspace = _workspace(tmp_path)
+
+    result = await workspace.read_file("report.pdf")
+
+    assert result["document"] == {
+        "kind": "text_document",
+        "format": "pdf",
+        "metadata": {"Content-Type": "application/pdf"},
+        "text": "Extracted PDF text",
+    }
 
 
 async def test_workspace_blocks_parent_directory_traversal(tmp_path: Path) -> None:
@@ -60,55 +134,10 @@ def _workspace(root: Path) -> Workspace:
         max_list_entries=100,
         max_search_results=10,
         max_search_file_bytes=1_000_000,
+        document_reader=DocumentReader(
+            tika_url="http://tika.test",
+            tika_timeout_seconds=5.0,
+            max_spreadsheet_rows=100,
+            max_spreadsheet_columns=50,
+        ),
     )
-
-
-def _write_docx(path: Path, text: str) -> None:
-    xml = (
-        '<w:document xmlns:w="http://schemas.openxmlformats.org/'
-        'wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>'
-        f"{text}"
-        "</w:t></w:r></w:p></w:body></w:document>"
-    )
-    with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr("word/document.xml", xml)
-
-
-def _write_pptx(path: Path, text: str) -> None:
-    xml = (
-        '<p:sld xmlns:p="http://schemas.openxmlformats.org/'
-        'presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/'
-        'drawingml/2006/main"><p:cSld><p:spTree><p:sp><p:txBody>'
-        f"<a:p><a:r><a:t>{text}</a:t></a:r></a:p>"
-        "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>"
-    )
-    with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr("ppt/slides/slide1.xml", xml)
-
-
-def _write_xlsx(path: Path, text: str) -> None:
-    workbook = (
-        '<workbook xmlns="http://schemas.openxmlformats.org/'
-        'spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/'
-        'officeDocument/2006/relationships"><sheets><sheet name="Sheet1" '
-        'sheetId="1" r:id="rId1"/></sheets></workbook>'
-    )
-    relationships = (
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/'
-        'relationships"><Relationship Id="rId1" '
-        'Target="worksheets/sheet1.xml"/></Relationships>'
-    )
-    shared_strings = (
-        '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        f"<si><t>{text}</t></si></sst>"
-    )
-    sheet = (
-        '<worksheet xmlns="http://schemas.openxmlformats.org/'
-        'spreadsheetml/2006/main"><sheetData><row r="1">'
-        '<c r="A1" t="s"><v>0</v></c></row></sheetData></worksheet>'
-    )
-    with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr("xl/workbook.xml", workbook)
-        archive.writestr("xl/_rels/workbook.xml.rels", relationships)
-        archive.writestr("xl/sharedStrings.xml", shared_strings)
-        archive.writestr("xl/worksheets/sheet1.xml", sheet)
