@@ -58,6 +58,23 @@ needs appear, FastAPI is a reasonable host for the A2A server.
 - Add tests for protocol behavior, provider adapters, and error paths as soon as
   the first runnable agent exists.
 
+## Project Skills
+
+Store reusable project workflows under `.agents/skills`.
+
+- Before work that matches a project-local skill, read that skill's `SKILL.md`
+  after scanning the relevant memory files.
+- Use `.agents/skills/aop-a2a-server` for A2A server, executor, agent card,
+  runtime instruction, OpenRouter tool-calling, workspace tool, and document
+  extraction work.
+- Use `.agents/skills/aop-deployment` for Containerfile, Compose, Portainer,
+  Podman, health check, File Browser, Tika, runtime environment, and mounted
+  context volume work.
+- Move reusable task procedures into skills instead of bloating always-loaded
+  instructions or duplicating long details in memory.
+- Never store secrets, tokens, private credentials, or sensitive user data in
+  skill files.
+
 ## Memory
 
 Store agent memory under `.agents/memory`.
@@ -71,6 +88,8 @@ Store agent memory under `.agents/memory`.
 - Before substantial work, scan the relevant topic memories.
 - After substantial work, update the relevant topic memories before the final
   response.
+- When substantial work changes a reusable workflow, update the relevant
+  `.agents/skills/*/SKILL.md` as well.
 - Never store secrets, tokens, private credentials, or sensitive user data in
   memory files.
 

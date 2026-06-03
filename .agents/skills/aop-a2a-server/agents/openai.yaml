@@ -1,0 +1,4 @@
+interface:
+  display_name: "AOP A2A Server"
+  short_description: "Work on AOP A2A server behavior."
+  default_prompt: "Use the AOP A2A Server skill to update or debug this project's A2A server, agent card, executor, runtime instruction, or model-tool behavior."

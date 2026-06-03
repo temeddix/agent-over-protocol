@@ -1,40 +1,17 @@
 # A2A Server
 
-The server is built as a Starlette ASGI app using `a2a-sdk` route helpers.
+Detailed A2A server workflow guidance now lives in
+`.agents/skills/aop-a2a-server/SKILL.md`.
 
-- `create_app()` lives in `agent_over_protocol.server`.
-- The invite-friendly public card path is `/.well-known/agent.json`.
-- The SDK standard public card path is also served at
-  `/.well-known/agent-card.json`.
-- The JSON-RPC A2A endpoint is `/a2a`.
-- Invite dialogs that ask for an Agent A2A URL should use
-  `https://public-host/.well-known/agent.json`; the card then advertises
-  `https://public-host/a2a` for JSON-RPC.
-- Agent cards include both v0.3-compatible and v1.0 JSON-RPC interfaces so
-  older invite flows can read legacy `url`/`preferredTransport` fields while
-  modern clients can read `supportedInterfaces`.
-- The executor publishes an initial `Task` before status updates because the
-  current `a2a-sdk` default request handler expects task-mode streams to create
-  the task first.
-- Run the ASGI app with an explicit app dir, for example:
-  `uvicorn --app-dir src agent_over_protocol.server:create_app --factory`.
-- A2A v1 JSON-RPC requests should send the `A2A-Version: 1.0` header; the SDK
-  treats missing version headers as v0.3.
-- Runtime model instructions are provided by
-  `agent_over_protocol.context.FileInstructionProvider`, which combines an
-  optional `AGENT_CONTEXT_COMMAND` with optional `AGENT_CONTEXT_FILE` contents.
-- The executor loads runtime instructions once per non-empty A2A request and
-  passes them to `ChatBackend.complete(..., instructions=...)`.
-- The OpenRouter backend sends runtime instructions as a system message before
-  the user prompt when instructions are present.
-- The executor now also passes read-only workspace tools to the model backend.
-  Tools are built by `agent_over_protocol.tools.build_workspace_tools`.
-- OpenRouter chat completions use function/tool calling for `list_files`,
-  `read_file`, and `search_files`; tool calls are executed server-side and fed
-  back into the model as JSON strings before returning the final A2A answer.
-- Workspace access is rooted at `Settings.agent_workspace_root`, currently
-  `/context`, and rejects parent-directory traversal or drive-qualified paths.
-- Document extraction uses `agent_over_protocol.documents.DocumentReader`.
-  Excel `.xlsx`/`.xlsm` files are read with openpyxl into structured sheets,
-  rows, and cells. Other broad document formats are extracted through Tika at
-  `Settings.tika_url`, currently `http://tika:9998`.
+Use that skill before changing:
+
+- A2A protocol behavior
+- agent cards
+- executor behavior
+- runtime instructions
+- OpenRouter tool calling
+- workspace tools
+- document extraction
+
+Keep this memory file as an index. Move stable reusable A2A procedures into the
+skill instead of duplicating them here.

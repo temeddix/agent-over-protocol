@@ -1,0 +1,4 @@
+interface:
+  display_name: "AOP Deployment"
+  short_description: "Deploy and verify AOP containers."
+  default_prompt: "Use the AOP Deployment skill to update or debug this project's Compose, Portainer, container, or health-check behavior."
