@@ -22,6 +22,8 @@ Production deployment is expected to run through Compose/Portainer.
   at `/context` and read-write into File Browser at `/srv`.
 - The A2A agent reads runtime context from `/context/AGENTS.md`; File Browser
   edits the same mounted directory through `/srv`.
+- The A2A agent can browse the same `agent-context` named volume through
+  read-only model tools rooted at `/context`.
 - File Browser maps `${FILEBROWSER_PORT}` to container port `80` and stores
   its database in the `filebrowser-database` named volume.
 - `/healthz` is used for container health checks.

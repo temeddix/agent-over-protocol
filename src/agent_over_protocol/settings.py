@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     agent_context_file: str | None = "/context/AGENTS.md"
     agent_context_command: str | None = None
     agent_context_max_chars: int = 20_000
+    agent_workspace_root: str = "/context"
+    agent_workspace_max_read_chars: int = 60_000
+    agent_workspace_max_list_entries: int = 200
+    agent_workspace_max_search_results: int = 20
+    agent_workspace_max_search_file_bytes: int = 5_000_000
+    agent_tool_max_rounds: int = 6
 
     @property
     def rpc_url(self) -> str:

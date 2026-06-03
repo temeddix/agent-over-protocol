@@ -12,5 +12,8 @@ The user explicitly wants nonblocking async I/O everywhere practical.
 - Runtime AGENTS.md file reads currently use `asyncio.to_thread` around
   `Path.read_text` so A2A execution paths do not perform direct blocking file
   I/O.
+- Workspace listing, file reading, document extraction, and search run behind
+  `asyncio.to_thread` because standard-library filesystem, ZIP, CSV, HTML, and
+  XML parsing APIs are synchronous.
 - Tests should cover async paths with async test helpers rather than forcing
   synchronous wrappers around async application code.

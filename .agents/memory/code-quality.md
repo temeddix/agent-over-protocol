@@ -17,6 +17,10 @@ The project should optimize for strict Python quality from the beginning.
 - Local Windows pytest runs may need
   `uv run pytest --basetemp .cache\pytest-tmp -p no:cacheprovider` because the
   default temp/cache directories can have restrictive ACLs.
+- Document extraction currently uses only the Python standard library. Modern
+  OOXML formats `.docx`, `.xlsx`/`.xlsm`, and `.pptx` are parsed from ZIP/XML;
+  legacy binary Office formats `.doc`, `.xls`, and `.ppt` are intentionally
+  rejected with a clear message.
 - README.md lists the basic local quality and test commands:
   `uv run ruff check .`, `uv run ty check .`, `uv run pytest`, and
   `uv lock --check`.

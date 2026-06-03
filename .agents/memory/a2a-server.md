@@ -27,3 +27,10 @@ The server is built as a Starlette ASGI app using `a2a-sdk` route helpers.
   passes them to `ChatBackend.complete(..., instructions=...)`.
 - The OpenRouter backend sends runtime instructions as a system message before
   the user prompt when instructions are present.
+- The executor now also passes read-only workspace tools to the model backend.
+  Tools are built by `agent_over_protocol.tools.build_workspace_tools`.
+- OpenRouter chat completions use function/tool calling for `list_files`,
+  `read_file`, and `search_files`; tool calls are executed server-side and fed
+  back into the model before returning the final A2A answer.
+- Workspace access is rooted at `Settings.agent_workspace_root`, currently
+  `/context`, and rejects parent-directory traversal or drive-qualified paths.

@@ -18,6 +18,7 @@ from agent_over_protocol.context import FileInstructionProvider
 from agent_over_protocol.executor import OpenRouterAgentExecutor
 from agent_over_protocol.llm import ChatBackend, OpenRouterBackend
 from agent_over_protocol.settings import Settings, normalize_path
+from agent_over_protocol.tools import build_workspace_tools
 
 if TYPE_CHECKING:
     from a2a.types import AgentCard
@@ -38,11 +39,13 @@ def create_app(
     resolved_settings = settings or Settings()
     resolved_backend = backend or OpenRouterBackend.from_settings(resolved_settings)
     instruction_provider = FileInstructionProvider.from_settings(resolved_settings)
+    tools = build_workspace_tools(resolved_settings)
     agent_card = build_agent_card(resolved_settings)
     request_handler = DefaultRequestHandler(
         agent_executor=OpenRouterAgentExecutor(
             resolved_backend,
             instruction_provider=instruction_provider,
+            tools=tools,
         ),
         task_store=InMemoryTaskStore(),
         agent_card=agent_card,

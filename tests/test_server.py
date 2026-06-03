@@ -12,8 +12,10 @@ from agent_over_protocol.server import create_app
 from agent_over_protocol.settings import Settings
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Sequence
     from pathlib import Path
+
+    from agent_over_protocol.tools import AgentTool
 
 
 A2A_V1_HEADERS = {"A2A-Version": "1.0"}
@@ -27,11 +29,19 @@ class FakeBackend:
         self.response = response
         self.prompts: list[str] = []
         self.instructions: list[str | None] = []
+        self.tool_names: list[list[str]] = []
 
-    async def complete(self, prompt: str, *, instructions: str | None = None) -> str:
+    async def complete(
+        self,
+        prompt: str,
+        *,
+        instructions: str | None = None,
+        tools: Sequence[AgentTool] = (),
+    ) -> str:
         """Capture the prompt and return the configured response."""
         self.prompts.append(prompt)
         self.instructions.append(instructions)
+        self.tool_names.append([tool.name for tool in tools])
         return self.response
 
 
@@ -92,6 +102,7 @@ async def test_send_message_returns_completed_task() -> None:
 
     assert response.status_code == httpx.codes.OK
     assert backend.prompts == ["hello"]
+    assert backend.tool_names == [["list_files", "read_file", "search_files"]]
 
     body = response.json()
     assert body["id"] == "request-1"

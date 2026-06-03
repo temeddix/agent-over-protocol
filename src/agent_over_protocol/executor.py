@@ -24,10 +24,13 @@ from agent_over_protocol.context import ContextLoadError
 from agent_over_protocol.llm import ModelBackendError
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from a2a.server.events.event_queue_v2 import EventQueue
 
     from agent_over_protocol.context import InstructionProvider
     from agent_over_protocol.llm import ChatBackend
+    from agent_over_protocol.tools import AgentTool
 
 
 class OpenRouterAgentExecutor(AgentExecutor):
@@ -38,10 +41,12 @@ class OpenRouterAgentExecutor(AgentExecutor):
         backend: ChatBackend,
         *,
         instruction_provider: InstructionProvider | None = None,
+        tools: Sequence[AgentTool] = (),
     ) -> None:
         """Initialize the executor."""
         self._backend = backend
         self._instruction_provider = instruction_provider
+        self._tools = tools
 
     async def execute(
         self,
@@ -77,7 +82,11 @@ class OpenRouterAgentExecutor(AgentExecutor):
 
         try:
             instructions = await self._load_instructions()
-            answer = await self._backend.complete(prompt, instructions=instructions)
+            answer = await self._backend.complete(
+                prompt,
+                instructions=instructions,
+                tools=self._tools,
+            )
         except (ContextLoadError, ModelBackendError) as exc:
             message = _agent_message(task_id, context_id, str(exc))
             await event_queue.enqueue_event(

@@ -53,12 +53,15 @@ def build_agent_card(settings: Settings) -> AgentCard:
         skills=[
             AgentSkill(
                 id="general-chat",
-                name="General Chat",
-                description="Responds to text prompts through an async LLM backend.",
-                tags=["chat", "assistant", "openrouter"],
+                name="Workspace Chat",
+                description=(
+                    "Responds to text prompts and can inspect mounted workspace "
+                    "files, folders, and common document formats."
+                ),
+                tags=["chat", "assistant", "files", "documents"],
                 examples=[
-                    "Summarize this thread.",
-                    "Draft a concise reply.",
+                    "Summarize AGENTS.md.",
+                    "List the available workspace documents.",
                 ],
                 input_modes=[TEXT_MIME_TYPE],
                 output_modes=[TEXT_MIME_TYPE],
