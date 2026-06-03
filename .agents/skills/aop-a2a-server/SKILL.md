@@ -28,9 +28,10 @@ Keep the A2A protocol/server layer separate from the model backend. Treat OpenRo
 - A2A v1 JSON-RPC requests should send the `A2A-Version: 1.0` header; the SDK treats missing version headers as v0.3.
 - `OpenRouterAgentExecutor` should pass prior conversational context to the model:
   - consume incoming `RequestContext.current_task.history` when the SDK provides it;
-  - keep ordinary chat turns in an in-memory history keyed by A2A `context_id`;
+  - keep ordinary chat turns in `SQLiteConversationStore`, backed by `Settings.agent_conversation_db_path`;
   - alias chat history by task IDs, `referenceTaskIds`, related tasks, safe conversation/thread metadata or headers, and a process-local fallback scope for clients that omit A2A context IDs;
   - merge stored context history with incoming task history before calling `ChatBackend.complete(..., history=...)`.
+- Compose mounts the `agent-data` named volume at `/data`; the default SQLite file is `/data/conversations.sqlite`.
 - A2A history controls protocol task state/history. Do not treat `historyLength` as model-side compact history or summarization. Compact summaries belong in the application/backend conversation layer if added later.
 
 ## Runtime Instructions And Tools

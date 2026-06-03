@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+import tempfile
+from contextlib import asynccontextmanager, nullcontext
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
@@ -13,7 +15,6 @@ from agent_over_protocol.settings import Settings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
-    from pathlib import Path
 
     from agent_over_protocol.llm import ChatMessage
     from agent_over_protocol.tools import AgentTool
@@ -53,16 +54,39 @@ class FakeBackend:
 async def _client(
     backend: FakeBackend,
     *,
+    conversation_db_path: Path | None = None,
     settings: Settings | None = None,
 ) -> AsyncIterator[httpx.AsyncClient]:
-    resolved_settings = settings or Settings(agent_base_url="https://agent.example.com")
-    app = create_app(settings=resolved_settings, backend=backend)
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
-        transport=transport,
-        base_url="http://testserver",
-    ) as client:
-        yield client
+    temp_dir_context = (
+        tempfile.TemporaryDirectory()
+        if conversation_db_path is None
+        else nullcontext(None)
+    )
+    with temp_dir_context as temp_dir:
+        if conversation_db_path is None:
+            if temp_dir is None:
+                raise AssertionError
+            db_path = Path(temp_dir) / "conversations.sqlite"
+        else:
+            db_path = conversation_db_path
+
+        if settings is None:
+            resolved_settings = Settings(
+                agent_base_url="https://agent.example.com",
+                agent_conversation_db_path=str(db_path),
+            )
+        else:
+            resolved_settings = settings.model_copy(
+                update={"agent_conversation_db_path": str(db_path)}
+            )
+
+        app = create_app(settings=resolved_settings, backend=backend)
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as client:
+            yield client
 
 
 async def test_agent_card_is_invitable() -> None:
@@ -199,6 +223,37 @@ async def test_send_message_uses_reference_task_history() -> None:
     assert second_response.status_code == httpx.codes.OK
     assert backend.prompts == ["first question", "second question"]
     assert ("user", "first question") in backend.histories[1]
+
+
+async def test_conversation_history_survives_app_restart(tmp_path: Path) -> None:
+    """SQLite-backed chat history survives rebuilding the ASGI app."""
+    db_path = tmp_path / "conversations.sqlite"
+
+    first_backend = FakeBackend(response="First A2A response")
+    async with _client(first_backend, conversation_db_path=db_path) as client:
+        first_response = await client.post(
+            "/a2a",
+            headers=A2A_V1_HEADERS,
+            json=_send_message_request("first question"),
+        )
+        first_task = first_response.json()["result"]["task"]
+
+    second_backend = FakeBackend(response="Second A2A response")
+    async with _client(second_backend, conversation_db_path=db_path) as client:
+        second_response = await client.post(
+            "/a2a",
+            headers=A2A_V1_HEADERS,
+            json=_send_message_request(
+                "second question",
+                context_id=first_task["contextId"],
+                message_id="message-2",
+            ),
+        )
+
+    assert second_response.status_code == httpx.codes.OK
+    assert second_backend.prompts == ["second question"]
+    assert ("user", "first question") in second_backend.histories[0]
+    assert ("assistant", "First A2A response") in second_backend.histories[0]
 
 
 async def test_send_message_uses_runtime_context_file(tmp_path: Path) -> None:

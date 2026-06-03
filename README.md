@@ -57,6 +57,9 @@ File Browser is exposed on `${FILEBROWSER_PORT}` and serves the `agent-context`
 named volume. Edit `AGENTS.md` there to change the runtime context used by the
 A2A agent. The agent reads `/context/AGENTS.md` on each model request.
 
+Conversation history is stored in SQLite at `/data/conversations.sqlite` on the
+`agent-data` named volume.
+
 The A2A agent can browse the same named volume through read-only workspace
 tools. It can list folders, read supported files, and search text under
 `/context`. Excel files (`.xlsx`/`.xlsm`) are read with `openpyxl` and returned

@@ -12,6 +12,7 @@ services:
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
     volumes:
       - agent-context:/context:ro
+      - agent-data:/data
     depends_on:
       - tika
     healthcheck:
@@ -47,4 +48,5 @@ services:
 
 volumes:
   agent-context:
+  agent-data:
   filebrowser-database:

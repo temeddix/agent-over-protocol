@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     agent_workspace_max_search_results: int = 20
     agent_workspace_max_search_file_bytes: int = 5_000_000
     agent_tool_max_rounds: int = 6
+    agent_conversation_db_path: str = "/data/conversations.sqlite"
+    agent_conversation_max_messages: int = 40
     agent_spreadsheet_max_rows: int = 500
     agent_spreadsheet_max_columns: int = 100
     tika_url: str = "http://tika:9998"

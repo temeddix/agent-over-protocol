@@ -15,5 +15,7 @@ The user explicitly wants nonblocking async I/O everywhere practical.
 - Workspace listing, local file reads, text decoding, and openpyxl spreadsheet
   parsing run behind `asyncio.to_thread`; Tika extraction uses
   `httpx.AsyncClient`.
+- Conversation history persistence uses the standard `sqlite3` module behind
+  `asyncio.to_thread`, with a small async lock around store operations.
 - Tests should cover async paths with async test helpers rather than forcing
   synchronous wrappers around async application code.

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from typing import TYPE_CHECKING, cast
 
@@ -57,6 +56,7 @@ if TYPE_CHECKING:
     from a2a.server.events.event_queue_v2 import EventQueue
 
     from agent_over_protocol.context import InstructionProvider
+    from agent_over_protocol.conversation import ConversationStore
     from agent_over_protocol.llm import ChatBackend
     from agent_over_protocol.tools import AgentTool
 
@@ -68,15 +68,15 @@ class OpenRouterAgentExecutor(AgentExecutor):
         self,
         backend: ChatBackend,
         *,
+        conversation_store: ConversationStore,
         instruction_provider: InstructionProvider | None = None,
         tools: Sequence[AgentTool] = (),
     ) -> None:
         """Initialize the executor."""
         self._backend = backend
         self._instruction_provider = instruction_provider
+        self._conversation_store = conversation_store
         self._tools = tools
-        self._conversation_history: dict[str, list[ChatMessage]] = {}
-        self._conversation_lock = asyncio.Lock()
 
     async def execute(
         self,
@@ -162,9 +162,8 @@ class OpenRouterAgentExecutor(AgentExecutor):
     ) -> list[ChatMessage]:
         task_history = _chat_history(context)
         keys = _conversation_keys(task_id, context_id, context)
-        async with self._conversation_lock:
-            stored_histories = [self._conversation_history.get(key, ()) for key in keys]
-        return _merge_chat_history(*stored_histories, task_history)
+        stored_history = await self._conversation_store.load(keys)
+        return _merge_chat_history(stored_history, task_history)
 
     async def _remember_exchange(
         self,
@@ -179,12 +178,7 @@ class OpenRouterAgentExecutor(AgentExecutor):
             ChatMessage(role="user", content=prompt),
             ChatMessage(role="assistant", content=answer),
         ]
-        async with self._conversation_lock:
-            stored_histories = [self._conversation_history.get(key, ()) for key in keys]
-            history = [*_merge_chat_history(*stored_histories), *exchange]
-            history = history[-MAX_STORED_CHAT_MESSAGES:]
-            for key in keys:
-                self._conversation_history[key] = history
+        await self._conversation_store.append(keys, exchange)
 
     async def cancel(
         self,

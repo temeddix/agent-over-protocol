@@ -14,7 +14,9 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY src ./src
 
-RUN useradd --create-home --shell /usr/sbin/nologin app
+RUN useradd --create-home --shell /usr/sbin/nologin app \
+    && mkdir -p /data \
+    && chown app:app /data
 USER app
 
 EXPOSE 8000

@@ -16,6 +16,7 @@ from starlette.routing import Route
 
 from agent_over_protocol.agent_card import build_agent_card
 from agent_over_protocol.context import FileInstructionProvider
+from agent_over_protocol.conversation import ConversationStore, SQLiteConversationStore
 from agent_over_protocol.executor import OpenRouterAgentExecutor
 from agent_over_protocol.llm import ChatBackend, OpenRouterBackend
 from agent_over_protocol.settings import Settings, normalize_path
@@ -35,17 +36,23 @@ def create_app(
     *,
     settings: Settings | None = None,
     backend: ChatBackend | None = None,
+    conversation_store: ConversationStore | None = None,
 ) -> Starlette:
     """Create the A2A ASGI application."""
     resolved_settings = settings or Settings()
     resolved_backend = backend or OpenRouterBackend.from_settings(resolved_settings)
     instruction_provider = FileInstructionProvider.from_settings(resolved_settings)
+    resolved_conversation_store = conversation_store or SQLiteConversationStore(
+        resolved_settings.agent_conversation_db_path,
+        max_messages=resolved_settings.agent_conversation_max_messages,
+    )
     tools = build_workspace_tools(resolved_settings)
     agent_card = build_agent_card(resolved_settings)
     task_store = InMemoryTaskStore()
     request_handler = DefaultRequestHandler(
         agent_executor=OpenRouterAgentExecutor(
             resolved_backend,
+            conversation_store=resolved_conversation_store,
             instruction_provider=instruction_provider,
             tools=tools,
         ),
