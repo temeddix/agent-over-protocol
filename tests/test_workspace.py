@@ -119,6 +119,32 @@ async def test_workspace_uses_tika_for_pdf_documents(
     }
 
 
+async def test_workspace_encodes_non_ascii_tika_filename_header(
+    tmp_path: Path,
+    httpx_mock: HTTPXMock,
+) -> None:
+    """Tika requests keep non-ASCII filenames out of raw HTTP headers."""
+    pdf = tmp_path / "회의록.pdf"
+    pdf.write_bytes(b"%PDF-pretend")
+    httpx_mock.add_response(
+        method="PUT",
+        url="http://tika.test/rmeta/text",
+        json=[{"X-TIKA:content": "Extracted PDF text"}],
+    )
+    workspace = _workspace(tmp_path)
+
+    await workspace.read_file("회의록.pdf")
+
+    request = httpx_mock.get_request(
+        method="PUT",
+        url="http://tika.test/rmeta/text",
+    )
+    assert request is not None
+    disposition = request.headers["Content-Disposition"]
+    assert disposition.isascii()
+    assert "filename*=UTF-8''%ED%9A%8C%EC%9D%98%EB%A1%9D.pdf" in disposition
+
+
 async def test_workspace_blocks_parent_directory_traversal(tmp_path: Path) -> None:
     """Workspace reads cannot escape the configured root."""
     workspace = _workspace(tmp_path)

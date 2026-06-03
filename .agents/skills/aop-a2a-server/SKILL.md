@@ -21,6 +21,8 @@ Keep the A2A protocol/server layer separate from the model backend. Treat OpenRo
 - Keep `create_app()` in `agent_over_protocol.server`.
 - Serve the invite-friendly public card at `/.well-known/agent.json`.
 - Also serve the SDK standard public card at `/.well-known/agent-card.json`.
+- Also serve a compatibility card at `/a2a/.well-known/agent-card.json`
+  because some clients probe for the standard card below the RPC path.
 - Serve JSON-RPC A2A requests at `/a2a`.
 - Agent invite URLs should point at `https://public-host/.well-known/agent.json`; the card should advertise `https://public-host/a2a` for JSON-RPC.
 - Include both v0.3-compatible legacy fields and v1.0 `supportedInterfaces` in agent cards.
@@ -49,6 +51,8 @@ Keep the A2A protocol/server layer separate from the model backend. Treat OpenRo
 - Use `agent_over_protocol.documents.DocumentReader` for document extraction.
 - Read Excel `.xlsx` and `.xlsm` files with openpyxl into structured sheets, rows, and cells.
 - Extract other broad document formats through Tika at `Settings.tika_url`, currently `http://tika:9998`.
+- Tika `Content-Disposition` headers must remain ASCII-safe; use an ASCII
+  fallback filename plus RFC 5987 `filename*` for non-ASCII workspace names.
 
 ## Change Workflow
 

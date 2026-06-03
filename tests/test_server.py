@@ -118,6 +118,16 @@ async def test_standard_agent_card_path_is_available() -> None:
     assert response.json()["name"] == "Agent Over Protocol"
 
 
+async def test_rpc_prefixed_standard_agent_card_path_is_available() -> None:
+    """Clients that probe below the RPC path can still discover the card."""
+    backend = FakeBackend()
+    async with _client(backend) as client:
+        response = await client.get("/a2a/.well-known/agent-card.json")
+
+    assert response.status_code == httpx.codes.OK
+    assert response.json()["name"] == "Agent Over Protocol"
+
+
 async def test_send_message_returns_completed_task() -> None:
     """A JSON-RPC SendMessage request receives the backend answer."""
     backend = FakeBackend(response="A2A test response")

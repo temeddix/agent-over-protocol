@@ -24,3 +24,11 @@ and a process-local fallback scope for clients that omit context IDs. Compose
 mounts the `agent-data` named volume at `/data`, and the default SQLite file is
 `/data/conversations.sqlite`. Treat compact summaries as an application/backend
 concern rather than an A2A protocol feature.
+
+Current card routes: serve `/.well-known/agent.json`,
+`/.well-known/agent-card.json`, and compatibility
+`/a2a/.well-known/agent-card.json`; JSON-RPC remains at `/a2a`.
+
+Document extraction note: Tika requests must keep `Content-Disposition` ASCII
+safe by using an ASCII fallback filename and RFC 5987 `filename*` for non-ASCII
+workspace filenames.

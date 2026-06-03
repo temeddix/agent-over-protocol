@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 from io import StringIO
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 import httpx
 from openpyxl import load_workbook
@@ -63,6 +64,8 @@ TIKA_SUFFIXES = {
     ".xls",
 }
 SUPPORTED_SUFFIXES = TEXT_SUFFIXES | SPREADSHEET_SUFFIXES | TIKA_SUFFIXES
+HTTP_QUOTED_TEXT_MIN_CODEPOINT = 0x20
+HTTP_QUOTED_TEXT_MAX_CODEPOINT = 0x7E
 
 
 class DocumentReadError(RuntimeError):
@@ -184,7 +187,7 @@ class DocumentReader:
                     headers={
                         "Accept": "application/json",
                         "Content-Type": "application/octet-stream",
-                        "Content-Disposition": f'attachment; filename="{path.name}"',
+                        "Content-Disposition": _content_disposition(path.name),
                     },
                 )
                 response.raise_for_status()
@@ -224,6 +227,27 @@ def _decode_text(data: bytes) -> str:
         except UnicodeDecodeError:
             continue
     return data.decode("utf-8", errors="replace")
+
+
+def _content_disposition(filename: str) -> str:
+    fallback = _ascii_filename_fallback(filename)
+    encoded = quote(filename, safe="")
+    return f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{encoded}'
+
+
+def _ascii_filename_fallback(filename: str) -> str:
+    fallback = "".join(
+        character
+        if HTTP_QUOTED_TEXT_MIN_CODEPOINT
+        <= ord(character)
+        <= HTTP_QUOTED_TEXT_MAX_CODEPOINT
+        else "_"
+        for character in filename
+    )
+    fallback = fallback.replace("\\", "\\\\").replace('"', '\\"')
+    if fallback.strip(" ._"):
+        return fallback
+    return "document"
 
 
 def _delimited_rows(text: str, *, delimiter: str) -> list[JsonValue]:

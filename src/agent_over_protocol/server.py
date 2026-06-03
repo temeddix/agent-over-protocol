@@ -86,6 +86,23 @@ def _extra_agent_card_routes(
 ) -> list[Route]:
     primary_path = normalize_path(settings.agent_card_path)
     standard_path = normalize_path(settings.agent_standard_card_path)
-    if standard_path == primary_path:
-        return []
-    return create_agent_card_routes(agent_card, card_url=standard_path)
+    rpc_prefixed_standard_path = _prefixed_card_path(
+        settings.agent_rpc_path,
+        standard_path,
+    )
+    routes: list[Route] = []
+    seen_paths = {primary_path}
+    for card_path in (standard_path, rpc_prefixed_standard_path):
+        if card_path in seen_paths:
+            continue
+        routes.extend(create_agent_card_routes(agent_card, card_url=card_path))
+        seen_paths.add(card_path)
+    return routes
+
+
+def _prefixed_card_path(prefix: str, card_path: str) -> str:
+    normalized_prefix = normalize_path(prefix).rstrip("/")
+    normalized_card_path = normalize_path(card_path)
+    if not normalized_prefix:
+        return normalized_card_path
+    return f"{normalized_prefix}{normalized_card_path}"
