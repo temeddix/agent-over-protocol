@@ -46,7 +46,8 @@ Before substantial deployment work, scan:
 - Run an internal `tika` sidecar with `apache/tika:latest-full`.
 - Do not expose Tika on a host port.
 - Reach Tika from AOP at `http://tika:9998`.
-- Map `${FILEBROWSER_PORT}` to File Browser container port `80`.
+- Run File Browser on unprivileged container port `8080` so its non-root user
+  can bind successfully, and map `${FILEBROWSER_PORT}` to that port.
 - Store the File Browser database in the `filebrowser-database` named volume.
 
 ## Change Workflow
