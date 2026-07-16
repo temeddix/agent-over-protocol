@@ -43,8 +43,11 @@ Keep the A2A protocol/server layer separate from the model backend. Treat OpenRo
 - Load runtime instructions once per non-empty A2A request and pass them to `ChatBackend.complete(..., instructions=...)`.
 - Pass prior chat context to `ChatBackend.complete(..., history=...)`; the backend converts it into OpenAI-compatible chat messages before the current user prompt.
 - In the OpenRouter backend, send runtime instructions as a system message before the user prompt.
-- Build read-only workspace tools with `agent_over_protocol.tools.build_workspace_tools`.
-- Expose `list_files`, `read_file`, and `search_files` to the model through OpenRouter chat-completions tool calling.
+- Build read-only workspace and public-web tools with `agent_over_protocol.tools.build_workspace_tools`.
+- Expose `list_files`, `read_file`, `search_files`, `fetch_url`, and `grep` to the model through OpenRouter chat-completions tool calling.
+- Use `fetch_url` for readable public HTTP(S) page text and `grep` for
+  case-insensitive matching lines within a fetched page. Reject obvious
+  local/private targets and surface blocked-page failures instead of guessing.
 - Execute model tool calls server-side and feed results back to the model as JSON strings before returning the final A2A answer.
 - Root workspace access at `Settings.agent_workspace_root`, currently `/context`.
 - Reject parent-directory traversal and drive-qualified paths.

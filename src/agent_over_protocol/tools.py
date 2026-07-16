@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from agent_over_protocol.documents import DocumentReader, JsonObject
+from agent_over_protocol.web import WebFetcher, WebFetchError
 from agent_over_protocol.workspace import Workspace, WorkspaceError
 
 if TYPE_CHECKING:
@@ -38,7 +39,7 @@ class AgentTool:
         """Execute the tool with validated arguments."""
         try:
             result = await self.handler(arguments)
-        except WorkspaceError as exc:
+        except (WebFetchError, WorkspaceError) as exc:
             raise ToolCallError(str(exc)) from exc
         return json.dumps(result, ensure_ascii=False)
 
@@ -70,6 +71,12 @@ def build_workspace_tools(settings: Settings) -> list[AgentTool]:
         max_search_file_bytes=settings.agent_workspace_max_search_file_bytes,
         document_reader=document_reader,
     )
+    web = WebFetcher(
+        timeout_seconds=settings.agent_web_timeout_seconds,
+        max_chars=settings.agent_web_max_chars,
+        max_bytes=settings.agent_web_max_bytes,
+        max_grep_results=settings.agent_web_max_grep_results,
+    )
 
     async def list_files(arguments: Mapping[str, object]) -> JsonObject:
         return await workspace.list_directory(_string_argument(arguments, "path", "."))
@@ -84,6 +91,18 @@ def build_workspace_tools(settings: Settings) -> list[AgentTool]:
         return await workspace.search_files(
             _string_argument(arguments, "query", ""),
             _string_argument(arguments, "path", "."),
+        )
+
+    async def fetch_url(arguments: Mapping[str, object]) -> JsonObject:
+        return await web.fetch(
+            _string_argument(arguments, "url", ""),
+            max_chars=_int_argument(arguments, "max_chars", None),
+        )
+
+    async def grep(arguments: Mapping[str, object]) -> JsonObject:
+        return await web.grep(
+            _string_argument(arguments, "url", ""),
+            _string_argument(arguments, "query", ""),
         )
 
     return [
@@ -157,6 +176,52 @@ def build_workspace_tools(settings: Settings) -> list[AgentTool]:
                 "additionalProperties": False,
             },
             handler=search_files,
+        ),
+        AgentTool(
+            name="fetch_url",
+            description=(
+                "Fetch a public HTTP or HTTPS URL and return readable page text. "
+                "Use this whenever the user provides a URL or asks about a web page."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Absolute public HTTP(S) URL to fetch.",
+                    },
+                    "max_chars": {
+                        "type": "integer",
+                        "description": "Optional maximum characters to return.",
+                    },
+                },
+                "required": ["url"],
+                "additionalProperties": False,
+            },
+            handler=fetch_url,
+        ),
+        AgentTool(
+            name="grep",
+            description=(
+                "Fetch a public web page and return lines containing a "
+                "case-insensitive text query."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Absolute public HTTP(S) URL to search.",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Literal text to find in the page.",
+                    },
+                },
+                "required": ["url", "query"],
+                "additionalProperties": False,
+            },
+            handler=grep,
         ),
     ]
 

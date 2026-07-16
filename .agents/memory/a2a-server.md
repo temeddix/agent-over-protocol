@@ -32,3 +32,8 @@ Current card routes: serve `/.well-known/agent.json`,
 Document extraction note: Tika requests must keep `Content-Disposition` ASCII
 safe by using an ASCII fallback filename and RFC 5987 `filename*` for non-ASCII
 workspace filenames.
+
+Current model tools also include async `fetch_url` and `grep` for public HTTP(S)
+pages. They return readable text, reject obvious local/private targets, and must
+report fetch failures instead of inventing page contents. LinkedIn currently
+returns HTTP 999 to direct unauthenticated fetches in the local environment.
