@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     agent_card_path: str = "/.well-known/agent.json"
     agent_standard_card_path: str = "/.well-known/agent-card.json"
     openrouter_api_key: str | None = None
-    openrouter_model: str = "openai/gpt-4.1-mini"
+    openrouter_model: str = "z-ai/glm-5.2"
     agent_context_file: str | None = "/context/AGENTS.md"
     agent_context_command: str | None = None
     agent_context_max_chars: int = 20_000
