@@ -33,7 +33,7 @@ services:
       - "${FILEBROWSER_PORT}:8080"
     volumes:
       - agent-context:/srv
-      - filebrowser-database:/database
+      - filebrowser-db:/database
     command:
       - --address
       - 0.0.0.0
@@ -51,4 +51,4 @@ services:
 volumes:
   agent-context:
   agent-data:
-  filebrowser-database:
+  filebrowser-db:
