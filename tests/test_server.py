@@ -269,8 +269,8 @@ async def test_conversation_history_survives_app_restart(tmp_path: Path) -> None
 
 
 async def test_send_message_uses_runtime_context_file(tmp_path: Path) -> None:
-    """Runtime command and AGENTS.md content are passed to the backend."""
-    context_file = tmp_path / "AGENTS.md"
+    """Runtime command and SOUL.md content are passed to the backend."""
+    context_file = tmp_path / "SOUL.md"
     context_file.write_text(
         "# Runtime Agent\nAnswer in Korean with concise context.",
         encoding="utf-8",
@@ -294,7 +294,7 @@ async def test_send_message_uses_runtime_context_file(tmp_path: Path) -> None:
     assert backend.instructions == [
         "Runtime command:\n"
         "Follow this A2A server runtime context.\n\n"
-        "Operator policy from AGENTS.md. These rules are binding and take "
+        "Operator policy from SOUL.md. These rules are binding and take "
         "priority over your defaults. Carry out every action they require "
         "before you reply:\n"
         "# Runtime Agent\n"

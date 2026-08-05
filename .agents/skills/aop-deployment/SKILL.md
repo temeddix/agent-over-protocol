@@ -40,7 +40,7 @@ Before substantial deployment work, scan:
 
 - Mount the `agent-context` named volume read-only into the A2A agent at `/context`.
 - Mount the same `agent-context` named volume read-write into File Browser at `/srv`.
-- Read runtime agent instructions from `/context/AGENTS.md`.
+- Read runtime agent instructions from `/context/SOUL.md`.
 - Let File Browser edit the same mounted directory through `/srv`.
 - Let the A2A agent browse the same context volume through read-only model tools rooted at `/context`.
 - Run an internal `tika` sidecar with `apache/tika:latest-full`.

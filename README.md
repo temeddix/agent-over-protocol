@@ -54,8 +54,8 @@ For Portainer, provide the Compose environment variables explicitly in the stack
 environment. Do not rely on Compose interpolation defaults.
 
 File Browser is exposed on `${FILEBROWSER_PORT}` and serves the `agent-context`
-named volume. Edit `AGENTS.md` there to change the runtime context used by the
-A2A agent. The agent reads `/context/AGENTS.md` on each model request.
+named volume. Edit `SOUL.md` there to change the runtime context used by the
+A2A agent. The agent reads `/context/SOUL.md` on each model request.
 
 Conversation history is stored in SQLite at `/data/conversations.sqlite` on the
 `agent-data` named volume.

@@ -60,7 +60,7 @@ def build_agent_card(settings: Settings) -> AgentCard:
                 ),
                 tags=["chat", "assistant", "files", "documents"],
                 examples=[
-                    "Summarize AGENTS.md.",
+                    "Summarize SOUL.md.",
                     "List the available workspace documents.",
                 ],
                 input_modes=[TEXT_MIME_TYPE],
