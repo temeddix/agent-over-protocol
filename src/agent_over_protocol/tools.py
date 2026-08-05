@@ -56,7 +56,7 @@ class AgentTool:
 
 
 def build_workspace_tools(settings: Settings) -> list[AgentTool]:
-    """Build read-only file workspace tools from settings."""
+    """Build file workspace and public-web tools from settings."""
     document_reader = DocumentReader(
         tika_url=settings.tika_url,
         tika_timeout_seconds=settings.tika_timeout_seconds,
@@ -69,6 +69,7 @@ def build_workspace_tools(settings: Settings) -> list[AgentTool]:
         max_list_entries=settings.agent_workspace_max_list_entries,
         max_search_results=settings.agent_workspace_max_search_results,
         max_search_file_bytes=settings.agent_workspace_max_search_file_bytes,
+        max_write_chars=settings.agent_workspace_max_write_chars,
         document_reader=document_reader,
     )
     web = WebFetcher(
@@ -85,6 +86,13 @@ def build_workspace_tools(settings: Settings) -> list[AgentTool]:
         return await workspace.read_file(
             _string_argument(arguments, "path", "."),
             max_chars=_int_argument(arguments, "max_chars", None),
+        )
+
+    async def write_file(arguments: Mapping[str, object]) -> JsonObject:
+        return await workspace.write_file(
+            _string_argument(arguments, "path", ""),
+            _string_argument(arguments, "content", ""),
+            append=_bool_argument(arguments, "append", default=False),
         )
 
     async def search_files(arguments: Mapping[str, object]) -> JsonObject:
@@ -109,7 +117,7 @@ def build_workspace_tools(settings: Settings) -> list[AgentTool]:
         AgentTool(
             name="list_files",
             description=(
-                "List files and folders under the read-only workspace root. "
+                "List files and folders under the workspace root. "
                 "Use this before reading when the exact path is unknown."
             ),
             parameters={
@@ -130,7 +138,7 @@ def build_workspace_tools(settings: Settings) -> list[AgentTool]:
         AgentTool(
             name="read_file",
             description=(
-                "Read a supported file or document from the read-only workspace. "
+                "Read a supported file or document from the workspace. "
                 "Returns structured JSON. Excel files include sheets, rows, "
                 "and cell addresses; other documents use Tika text and metadata."
             ),
@@ -152,10 +160,42 @@ def build_workspace_tools(settings: Settings) -> list[AgentTool]:
             handler=read_file,
         ),
         AgentTool(
+            name="write_file",
+            description=(
+                "Write UTF-8 text to a workspace file, creating parent folders "
+                "as needed. Use append=true to add to a log or journal instead "
+                "of replacing it. Files ending in .json or .toml are parsed "
+                "before saving and rejected when the syntax is invalid."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Workspace-relative file path to write.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Full text to write, or the text to append.",
+                    },
+                    "append": {
+                        "type": "boolean",
+                        "description": (
+                            "Append to the existing file instead of replacing it. "
+                            "Defaults to false."
+                        ),
+                    },
+                },
+                "required": ["path", "content"],
+                "additionalProperties": False,
+            },
+            handler=write_file,
+        ),
+        AgentTool(
             name="search_files",
             description=(
-                "Search supported files and documents under the read-only "
-                "workspace for text."
+                "Search supported files and documents under the workspace "
+                "for text."
             ),
             parameters={
                 "type": "object",
@@ -231,6 +271,19 @@ def _string_argument(arguments: Mapping[str, object], name: str, default: str) -
     if isinstance(value, str):
         return value
     message = f"Tool argument {name!r} must be a string."
+    raise ToolCallError(message)
+
+
+def _bool_argument(
+    arguments: Mapping[str, object],
+    name: str,
+    *,
+    default: bool,
+) -> bool:
+    value = arguments.get(name, default)
+    if isinstance(value, bool):
+        return value
+    message = f"Tool argument {name!r} must be a boolean."
     raise ToolCallError(message)
 
 

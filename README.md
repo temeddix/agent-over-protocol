@@ -60,9 +60,11 @@ A2A agent. The agent reads `/context/AGENTS.md` on each model request.
 Conversation history is stored in SQLite at `/data/conversations.sqlite` on the
 `agent-data` named volume.
 
-The A2A agent can browse the same named volume through read-only workspace
-tools. It can list folders, read supported files, and search text under
-`/context`. Excel files (`.xlsx`/`.xlsm`) are read with `openpyxl` and returned
+The A2A agent can browse the same named volume through workspace tools. It can
+list folders, read supported files, and search text under `/context`. It can
+also write files there with `write_file`, which creates missing folders, appends
+when asked, and rejects `.json` or `.toml` content that fails to parse. Excel
+files (`.xlsx`/`.xlsm`) are read with `openpyxl` and returned
 as structured sheets, rows, and cells. Other document formats are extracted
 through the internal Tika sidecar and returned as JSON with text plus metadata.
 

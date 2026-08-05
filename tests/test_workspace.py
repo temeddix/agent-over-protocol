@@ -145,6 +145,52 @@ async def test_workspace_encodes_non_ascii_tika_filename_header(
     assert "filename*=UTF-8''%ED%9A%8C%EC%9D%98%EB%A1%9D.pdf" in disposition
 
 
+async def test_workspace_writes_and_appends_files(tmp_path: Path) -> None:
+    """Writes create missing folders and appends keep earlier entries."""
+    workspace = _workspace(tmp_path)
+
+    created = await workspace.write_file("logs/2026-08-05.md", "## 첫 기록")
+    await workspace.write_file("logs/2026-08-05.md", "## 두번째", append=True)
+
+    assert created == {
+        "kind": "write_result",
+        "path": "logs/2026-08-05.md",
+        "mode": "overwrite",
+        "bytes_written": len("## 첫 기록".encode()),
+    }
+    log = tmp_path / "logs" / "2026-08-05.md"
+    assert log.read_text(encoding="utf-8") == "## 첫 기록\n## 두번째"
+
+
+async def test_workspace_rejects_invalid_structured_content(tmp_path: Path) -> None:
+    """JSON and TOML writes are parsed before they reach disk."""
+    workspace = _workspace(tmp_path)
+
+    with pytest.raises(WorkspaceError, match="not valid JSON"):
+        await workspace.write_file("state.json", "{broken")
+    with pytest.raises(WorkspaceError, match="not valid TOML"):
+        await workspace.write_file("config.toml", "name = ")
+
+    assert not (tmp_path / "state.json").exists()
+    assert not (tmp_path / "config.toml").exists()
+
+
+async def test_workspace_rejects_oversized_writes(tmp_path: Path) -> None:
+    """Writes above the character limit are refused."""
+    workspace = _workspace(tmp_path)
+
+    with pytest.raises(WorkspaceError, match="character write limit"):
+        await workspace.write_file("big.txt", "x" * 1_001)
+
+
+async def test_workspace_blocks_writes_outside_the_root(tmp_path: Path) -> None:
+    """Writes cannot escape the configured root."""
+    workspace = _workspace(tmp_path)
+
+    with pytest.raises(WorkspaceError, match="Parent directory traversal"):
+        await workspace.write_file("../escape.md", "nope")
+
+
 async def test_workspace_blocks_parent_directory_traversal(tmp_path: Path) -> None:
     """Workspace reads cannot escape the configured root."""
     workspace = _workspace(tmp_path)
@@ -160,6 +206,7 @@ def _workspace(root: Path) -> Workspace:
         max_list_entries=100,
         max_search_results=10,
         max_search_file_bytes=1_000_000,
+        max_write_chars=1_000,
         document_reader=DocumentReader(
             tika_url="http://tika.test",
             tika_timeout_seconds=5.0,

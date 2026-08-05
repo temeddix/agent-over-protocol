@@ -11,7 +11,7 @@ services:
       AGENT_BASE_URL: "${AGENT_BASE_URL}"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
     volumes:
-      - agent-context:/context:ro
+      - agent-context:/context
       - agent-data:/data
     depends_on:
       - tika

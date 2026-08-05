@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     agent_workspace_max_list_entries: int = 200
     agent_workspace_max_search_results: int = 20
     agent_workspace_max_search_file_bytes: int = 5_000_000
+    agent_workspace_max_write_chars: int = 60_000
     agent_web_timeout_seconds: float = 20.0
     agent_web_max_chars: int = 80_000
     agent_web_max_bytes: int = 2_000_000

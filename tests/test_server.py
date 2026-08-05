@@ -141,7 +141,7 @@ async def test_send_message_returns_completed_task() -> None:
     assert response.status_code == httpx.codes.OK
     assert backend.prompts == ["hello"]
     assert backend.tool_names == [
-        ["list_files", "read_file", "search_files", "fetch_url", "grep"]
+        ["list_files", "read_file", "write_file", "search_files", "fetch_url", "grep"]
     ]
 
     body = response.json()

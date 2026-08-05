@@ -1,9 +1,11 @@
 # Copyright (c) 2026 Danny Kim
-"""Read-only workspace browsing for the A2A agent."""
+"""Workspace browsing and writing for the A2A agent."""
 
 from __future__ import annotations
 
 import asyncio
+import json
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
@@ -26,13 +28,14 @@ class WorkspaceError(RuntimeError):
 
 @dataclass(frozen=True)
 class Workspace:
-    """Read-only file workspace rooted at a single directory."""
+    """File workspace rooted at a single directory."""
 
     root: Path
     max_read_chars: int
     max_list_entries: int
     max_search_results: int
     max_search_file_bytes: int
+    max_write_chars: int
     document_reader: DocumentReader
 
     async def list_directory(self, path: str = ".") -> JsonObject:
@@ -93,6 +96,55 @@ class Workspace:
             "truncated": truncated,
         }
 
+    async def write_file(
+        self,
+        path: str,
+        content: str,
+        *,
+        append: bool = False,
+    ) -> JsonObject:
+        """Write text to a workspace file, overwriting or appending."""
+        if len(content) > self.max_write_chars:
+            message = (
+                f"Content exceeds the {self.max_write_chars} character write limit."
+            )
+            raise WorkspaceError(message)
+        return await asyncio.to_thread(
+            self._write_file_sync,
+            path,
+            content,
+            append=append,
+        )
+
+    def _write_file_sync(
+        self,
+        path: str,
+        content: str,
+        *,
+        append: bool,
+    ) -> JsonObject:
+        file_path = self._resolve_writable(path)
+        merged = content
+        if append and file_path.exists():
+            existing = _read_text_for_append(file_path)
+            separator = "" if not existing or existing.endswith("\n") else "\n"
+            merged = f"{existing}{separator}{content}"
+        _validate_format(file_path, merged)
+
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(merged, encoding="utf-8")
+        except OSError as exc:
+            message = f"Could not write file: {_display_path(self.root, file_path)}"
+            raise WorkspaceError(message) from exc
+
+        return {
+            "kind": "write_result",
+            "path": _display_path(self.root, file_path),
+            "mode": "append" if append else "overwrite",
+            "bytes_written": len(merged.encode("utf-8")),
+        }
+
     def _list_directory_sync(self, path: str) -> JsonObject:
         directory = self._resolve_existing(path)
         if not directory.is_dir():
@@ -148,6 +200,49 @@ class Workspace:
             raise WorkspaceError(message)
         return resolved
 
+    def _resolve_writable(self, path: str) -> Path:
+        try:
+            root = self.root.resolve(strict=True)
+        except FileNotFoundError as exc:
+            message = f"Workspace root does not exist: {self.root}"
+            raise WorkspaceError(message) from exc
+        relative = _relative_path(path)
+        if not relative.parts:
+            message = "A file path is required."
+            raise WorkspaceError(message)
+        candidate = (root / relative).resolve(strict=False)
+        if not _is_inside(root, candidate):
+            message = "Workspace path escapes the configured root."
+            raise WorkspaceError(message)
+        if candidate.is_dir():
+            message = f"Not a file: {_display_path(root, candidate)}"
+            raise WorkspaceError(message)
+        return candidate
+
+
+def _read_text_for_append(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        message = f"Cannot append to unreadable file: {path.name}"
+        raise WorkspaceError(message) from exc
+
+
+def _validate_format(path: Path, content: str) -> None:
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        try:
+            json.loads(content)
+        except ValueError as exc:
+            message = f"Content is not valid JSON: {exc}"
+            raise WorkspaceError(message) from exc
+    elif suffix == ".toml":
+        try:
+            tomllib.loads(content)
+        except tomllib.TOMLDecodeError as exc:
+            message = f"Content is not valid TOML: {exc}"
+            raise WorkspaceError(message) from exc
+
 
 def _relative_path(path: str) -> Path:
     normalized = (path or ".").strip().replace("\\", "/")
@@ -167,7 +262,7 @@ def _relative_path(path: str) -> Path:
 def _is_inside(root: Path, path: Path) -> bool:
     try:
         path.resolve(strict=False).relative_to(root.resolve(strict=True))
-    except FileNotFoundError, ValueError:
+    except (FileNotFoundError, ValueError):
         return False
     return True
 
@@ -188,7 +283,7 @@ def _format_entry(root: Path, path: Path) -> JsonObject:
 def _display_path(root: Path, path: Path) -> str:
     try:
         relative = path.resolve(strict=False).relative_to(root.resolve(strict=True))
-    except FileNotFoundError, ValueError:
+    except (FileNotFoundError, ValueError):
         return "."
     rendered = relative.as_posix()
     return rendered or "."

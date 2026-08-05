@@ -27,11 +27,13 @@ if TYPE_CHECKING:
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_TIMEOUT_SECONDS = 60.0
 WORKSPACE_TOOL_INSTRUCTIONS = (
-    "You may inspect the mounted read-only workspace and public web pages only "
+    "You may inspect the mounted workspace and public web pages only "
     "through the provided tools. Use list_files, read_file, and search_files when "
     "the user asks "
     "about files, folders, spreadsheets, Word documents, PowerPoint decks, or "
-    "other workspace documents. Use fetch_url or grep whenever the user provides "
+    "other workspace documents. Use write_file to record or update workspace "
+    "files, with append=true for logs and journals so existing entries survive. "
+    "Use fetch_url or grep whenever the user provides "
     "a URL or asks you to rely on a specific web page. Never claim you inspected "
     "a file or web page unless a tool result supports it. If a fetch is blocked, "
     "say so instead of guessing."
