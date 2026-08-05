@@ -151,8 +151,8 @@ class OpenRouterBackend:
         messages = _messages(
             prompt,
             instructions=_combine_instructions(
-                instructions,
                 WORKSPACE_TOOL_INSTRUCTIONS,
+                instructions,
             ),
             history=history,
         )

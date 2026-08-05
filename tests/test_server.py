@@ -294,7 +294,9 @@ async def test_send_message_uses_runtime_context_file(tmp_path: Path) -> None:
     assert backend.instructions == [
         "Runtime command:\n"
         "Follow this A2A server runtime context.\n\n"
-        "Context file (AGENTS.md):\n"
+        "Operator policy from AGENTS.md. These rules are binding and take "
+        "priority over your defaults. Carry out every action they require "
+        "before you reply:\n"
         "# Runtime Agent\n"
         "Answer in Korean with concise context.",
     ]
