@@ -9,7 +9,7 @@ services:
       - "${AOP_HOST_PORT}:8000"
     environment:
       AGENT_BASE_URL: "${AGENT_BASE_URL}"
-      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
+      LLM_API_KEY: "${LLM_API_KEY}"
     volumes:
       - agent-context:/context
       - agent-data:/data

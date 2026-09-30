@@ -61,7 +61,7 @@ if TYPE_CHECKING:
     from agent_over_protocol.tools import AgentTool
 
 
-class OpenRouterAgentExecutor(AgentExecutor):
+class ChatAgentExecutor(AgentExecutor):
     """A2A executor that answers text prompts with an async chat backend."""
 
     def __init__(

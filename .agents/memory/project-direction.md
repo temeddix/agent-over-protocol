@@ -4,8 +4,10 @@ Build a Python A2A agent using `a2a-sdk`.
 
 - The project requires Python 3.14 or newer.
 - The A2A protocol/server layer should be separate from the LLM backend.
-- The initial backend may call OpenRouter through an OpenAI-compatible async
-  client.
+- The backend uses Brain's OpenAI-compatible async API at
+  `https://brain.temeddix.me/v1` with model `toddler` by default. Configure it
+  through `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL`.
+- Match the user's language in user-facing conversation.
 - Prefer async end to end across request handling, A2A execution, and provider
   calls.
 - Nonblocking async I/O is a project-wide requirement, including file I/O and

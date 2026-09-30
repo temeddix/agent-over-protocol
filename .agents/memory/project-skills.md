@@ -3,7 +3,7 @@
 Project-local Codex skills live under `.agents/skills`.
 
 - `.agents/skills/aop-a2a-server` covers A2A server, executor, agent cards,
-  runtime instructions, OpenRouter tool calling, workspace tools, and document
+  runtime instructions, OpenAI-compatible model tool calling, workspace tools, and document
   extraction.
 - `.agents/skills/aop-deployment` covers Containerfile, Compose, Portainer,
   Podman, health checks, File Browser, Tika, runtime environment variables, and

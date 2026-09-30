@@ -1,6 +1,7 @@
 # Agent Over Protocol
 
-Async Python A2A agent backed by OpenRouter.
+Async Python A2A agent using the OpenAI-compatible API at
+`https://brain.temeddix.me/v1` with the `toddler` model.
 
 ## Setup
 
@@ -16,9 +17,15 @@ configuration.
 
 ```powershell
 $env:AGENT_BASE_URL = "http://127.0.0.1:8000"
-$env:OPENROUTER_API_KEY = "your-openrouter-key"
+$env:LLM_API_KEY = "your-brain-api-key"
 uv run uvicorn --app-dir src agent_over_protocol.server:create_app --factory --host 0.0.0.0 --port 8000
 ```
+
+`LLM_API_KEY` is required. `LLM_BASE_URL` defaults to
+`https://brain.temeddix.me/v1`, and `LLM_MODEL` defaults to `toddler`.
+Set those variables to use another OpenAI-compatible endpoint or model.
+Existing deployments must replace `OPENROUTER_API_KEY` with `LLM_API_KEY`;
+OpenRouter credentials are not reused for Brain.
 
 Invite/discovery URLs:
 
@@ -42,7 +49,7 @@ uv lock --check
 
 ```powershell
 $env:AGENT_BASE_URL = "https://agent.example.com"
-$env:OPENROUTER_API_KEY = "your-openrouter-key"
+$env:LLM_API_KEY = "your-brain-api-key"
 $env:AOP_HOST_PORT = "8000"
 $env:FILEBROWSER_PORT = "8080"
 podman compose -f compose.yaml config

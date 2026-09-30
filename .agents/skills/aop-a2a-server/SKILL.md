@@ -1,6 +1,6 @@
 ---
 name: aop-a2a-server
-description: Project-local workflow for modifying or debugging agent-over-protocol's A2A server, agent cards, executor, runtime instructions, OpenRouter tool calling, and read-only workspace or document tools. Use when changing files such as server.py, executor.py, agent_card.py, llm.py, tools.py, workspace.py, documents.py, context.py, settings.py, or tests that exercise A2A protocol behavior.
+description: Project-local workflow for modifying or debugging agent-over-protocol's A2A server, agent cards, executor, runtime instructions, OpenAI-compatible model tool calling, and read-only workspace or document tools. Use when changing files such as server.py, executor.py, agent_card.py, llm.py, tools.py, workspace.py, documents.py, context.py, settings.py, or tests that exercise A2A protocol behavior.
 ---
 
 # AOP A2A Server
@@ -13,7 +13,7 @@ Before A2A protocol or runtime work, scan the relevant memory files:
 - `.agents/memory/async-io.md`
 - `.agents/memory/code-quality.md`
 
-Keep the A2A protocol/server layer separate from the model backend. Treat OpenRouter as the LLM provider behind an OpenAI-compatible async client, not as the A2A transport.
+Keep the A2A protocol/server layer separate from the model backend. Use `OpenAICompatibleBackend` with `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL`. Defaults are `https://brain.temeddix.me/v1` and `toddler`; the provider stays separate from the A2A transport.
 
 ## Current Contract
 
@@ -28,7 +28,7 @@ Keep the A2A protocol/server layer separate from the model backend. Treat OpenRo
 - Include both v0.3-compatible legacy fields and v1.0 `supportedInterfaces` in agent cards.
 - Publish an initial `Task` before status updates in task-mode streams because the current `a2a-sdk` request handler expects the task to exist first.
 - A2A v1 JSON-RPC requests should send the `A2A-Version: 1.0` header; the SDK treats missing version headers as v0.3.
-- `OpenRouterAgentExecutor` should pass prior conversational context to the model:
+- `ChatAgentExecutor` should pass prior conversational context to the model:
   - consume incoming `RequestContext.current_task.history` when the SDK provides it;
   - keep ordinary chat turns in `SQLiteConversationStore`, backed by `Settings.agent_conversation_db_path`;
   - alias chat history by task IDs, `referenceTaskIds`, related tasks, safe conversation/thread metadata or headers, and a process-local fallback scope for clients that omit A2A context IDs;
@@ -42,9 +42,9 @@ Keep the A2A protocol/server layer separate from the model backend. Treat OpenRo
 - Combine optional `AGENT_CONTEXT_COMMAND` output with optional `AGENT_CONTEXT_FILE` contents.
 - Load runtime instructions once per non-empty A2A request and pass them to `ChatBackend.complete(..., instructions=...)`.
 - Pass prior chat context to `ChatBackend.complete(..., history=...)`; the backend converts it into OpenAI-compatible chat messages before the current user prompt.
-- In the OpenRouter backend, send runtime instructions as a system message before the user prompt.
+- In the model backend, send runtime instructions as a system message before the user prompt.
 - Build read-only workspace and public-web tools with `agent_over_protocol.tools.build_workspace_tools`.
-- Expose `list_files`, `read_file`, `search_files`, `fetch_url`, and `grep` to the model through OpenRouter chat-completions tool calling.
+- Expose `list_files`, `read_file`, `search_files`, `fetch_url`, and `grep` to the model through OpenAI-compatible chat-completions tool calling.
 - Use `fetch_url` for readable public HTTP(S) page text and `grep` for
   case-insensitive matching lines within a fetched page. Reject obvious
   local/private targets and surface blocked-page failures instead of guessing.

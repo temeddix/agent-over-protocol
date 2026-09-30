@@ -16,14 +16,15 @@ class Settings(BaseSettings):
     )
 
     agent_name: str = "Agent Over Protocol"
-    agent_description: str = "An async A2A agent backed by OpenRouter."
+    agent_description: str = "An async A2A agent with workspace and web tools."
     agent_version: str = "0.1.0"
     agent_base_url: str = "http://localhost:8000"
     agent_rpc_path: str = "/a2a"
     agent_card_path: str = "/.well-known/agent.json"
     agent_standard_card_path: str = "/.well-known/agent-card.json"
-    openrouter_api_key: str | None = None
-    openrouter_model: str = "z-ai/glm-5.2"
+    llm_api_key: str | None = None
+    llm_base_url: str = "https://brain.temeddix.me/v1"
+    llm_model: str = "toddler"
     agent_context_file: str | None = "/context/SOUL.md"
     agent_context_command: str | None = None
     agent_context_max_chars: int = 20_000

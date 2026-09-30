@@ -24,8 +24,7 @@ if TYPE_CHECKING:
     from agent_over_protocol.settings import Settings
     from agent_over_protocol.tools import AgentTool
 
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_TIMEOUT_SECONDS = 60.0
+MODEL_TIMEOUT_SECONDS = 60.0
 WORKSPACE_TOOL_INSTRUCTIONS = (
     "You may inspect the mounted workspace and public web pages only "
     "through the provided tools. Use list_files, read_file, and search_files when "
@@ -67,8 +66,8 @@ class ChatBackend(Protocol):
         """Return a response for a user prompt."""
 
 
-class OpenRouterBackend:
-    """OpenRouter implementation backed by the OpenAI-compatible API."""
+class OpenAICompatibleBackend:
+    """Async chat backend for an OpenAI-compatible API."""
 
     def __init__(
         self,
@@ -79,7 +78,7 @@ class OpenRouterBackend:
         timeout_seconds: float,
         max_tool_rounds: int,
     ) -> None:
-        """Initialize the async OpenRouter client."""
+        """Initialize the async OpenAI-compatible client."""
         self._client = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
@@ -89,17 +88,17 @@ class OpenRouterBackend:
         self._max_tool_rounds = max_tool_rounds
 
     @classmethod
-    def from_settings(cls, settings: Settings) -> OpenRouterBackend:
-        """Create an OpenRouter backend from application settings."""
-        api_key = settings.openrouter_api_key
+    def from_settings(cls, settings: Settings) -> OpenAICompatibleBackend:
+        """Create a model backend from application settings."""
+        api_key = settings.llm_api_key
         if not api_key:
-            message = "OPENROUTER_API_KEY is required"
+            message = "LLM_API_KEY is required"
             raise ModelBackendError(message)
         return cls(
             api_key=api_key,
-            model=settings.openrouter_model,
-            base_url=OPENROUTER_BASE_URL,
-            timeout_seconds=OPENROUTER_TIMEOUT_SECONDS,
+            model=settings.llm_model,
+            base_url=settings.llm_base_url,
+            timeout_seconds=MODEL_TIMEOUT_SECONDS,
             max_tool_rounds=settings.agent_tool_max_rounds,
         )
 
@@ -111,7 +110,7 @@ class OpenRouterBackend:
         history: Sequence[ChatMessage] = (),
         tools: Sequence[AgentTool] = (),
     ) -> str:
-        """Return an OpenRouter chat completion for the prompt."""
+        """Return a chat completion for the prompt."""
         if tools:
             return await self._complete_with_tools(
                 prompt,
@@ -126,18 +125,18 @@ class OpenRouterBackend:
                 messages=_messages(prompt, instructions=instructions, history=history),
             )
         except OpenAIError as exc:
-            message = "OpenRouter request failed"
+            message = "Model provider request failed"
             raise ModelBackendError(message) from exc
 
         if not response.choices:
-            message = "OpenRouter returned no choices"
+            message = "Model provider returned no choices"
             raise ModelBackendError(message)
 
         content = response.choices[0].message.content
         if isinstance(content, str) and content.strip():
             return content
 
-        message = "OpenRouter returned an empty response"
+        message = "Model provider returned an empty response"
         raise ModelBackendError(message)
 
     async def _complete_with_tools(
@@ -168,11 +167,11 @@ class OpenRouterBackend:
                     tool_choice="auto",
                 )
             except OpenAIError as exc:
-                message = "OpenRouter request failed"
+                message = "Model provider request failed"
                 raise ModelBackendError(message) from exc
 
             if not response.choices:
-                message = "OpenRouter returned no choices"
+                message = "Model provider returned no choices"
                 raise ModelBackendError(message)
 
             assistant_message = response.choices[0].message
@@ -181,7 +180,7 @@ class OpenRouterBackend:
                 content = assistant_message.content
                 if isinstance(content, str) and content.strip():
                     return content
-                message = "OpenRouter returned an empty response"
+                message = "Model provider returned an empty response"
                 raise ModelBackendError(message)
 
             messages.append(
@@ -198,7 +197,7 @@ class OpenRouterBackend:
                 }
                 messages.append(tool_message)
 
-        message = "OpenRouter did not produce a final response after tool use"
+        message = "Model provider did not produce a final response after tool use"
         raise ModelBackendError(message)
 
 

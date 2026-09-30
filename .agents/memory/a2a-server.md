@@ -9,7 +9,7 @@ Use that skill before changing:
 - agent cards
 - executor behavior
 - runtime instructions
-- OpenRouter tool calling
+- OpenAI-compatible model tool calling
 - workspace tools
 - document extraction
 - context/chat history handling

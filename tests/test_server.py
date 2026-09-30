@@ -92,7 +92,11 @@ async def _client(
 async def test_agent_card_is_invitable() -> None:
     """The agent card is available at the URL used by invite flows."""
     backend = FakeBackend()
-    async with _client(backend) as client:
+    settings = Settings(
+        agent_base_url="https://agent.example.com",
+        llm_api_key="test-brain-api-key",
+    )
+    async with _client(backend, settings=settings) as client:
         response = await client.get("/.well-known/agent.json")
 
     assert response.status_code == httpx.codes.OK
@@ -104,8 +108,10 @@ async def test_agent_card_is_invitable() -> None:
     assert body["preferredTransport"] == "JSONRPC"
     assert body["supportedInterfaces"][0]["url"] == "https://agent.example.com/a2a"
     assert body["skills"][0]["id"] == "general-chat"
-    assert "OPENROUTER_API_KEY" not in response_text
-    assert "test-openrouter-api-key" not in response_text
+    assert "LLM_API_KEY" not in response_text
+    assert "test-brain-api-key" not in response_text
+    assert "brain.temeddix.me" not in response_text
+    assert "toddler" not in response_text
 
 
 async def test_standard_agent_card_path_is_available() -> None:

@@ -1,7 +1,7 @@
 [project]
 name = "agent-over-protocol"
 version = "0.1.0"
-description = "Async Python A2A agent backed by OpenRouter."
+description = "Async Python A2A agent with an OpenAI-compatible model backend."
 requires-python = ">=3.14"
 license = "MIT"
 dependencies = [

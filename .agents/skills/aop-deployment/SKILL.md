@@ -32,8 +32,15 @@ Before substantial deployment work, scan:
 - Do not commit real provider keys, production secrets, or local ignored credentials.
 - Keep `tests/.env.template` test-only with dummy values.
 - Keep local ignored test credentials in `tests/.env`.
-- Read `OPENROUTER_API_KEY` from the environment.
-- Expose only required runtime values such as `AGENT_BASE_URL`, `OPENROUTER_API_KEY`, `AOP_HOST_PORT`, and `FILEBROWSER_PORT`.
+- Read `LLM_API_KEY` from the environment. The application defaults to Brain at
+  `https://brain.temeddix.me/v1` with model `toddler`.
+- For authorized Brain verification, read `BRAIN_API_KEY` from the `brain` stack
+  environment in Portainer and pass it as `LLM_API_KEY`. Load Portainer login
+  credentials from `~/.env` inside the access process; never print their values.
+  If multiple stacks share the name, select the one with `BRAIN_API_KEY` set.
+- Migrate old deployments from `OPENROUTER_API_KEY` to `LLM_API_KEY`; do not
+  automatically reuse credentials across providers.
+- Expose only required runtime values such as `AGENT_BASE_URL`, `LLM_API_KEY`, `AOP_HOST_PORT`, and `FILEBROWSER_PORT`.
 - Do not add optional Compose environment passthroughs or implicit interpolation defaults unless the user explicitly asks.
 
 ## Context Volume And Sidecars

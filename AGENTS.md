@@ -4,10 +4,9 @@
 
 Build a Python agent that serves the Agent2Agent (A2A) protocol with `a2a-sdk`.
 The A2A protocol/server layer should stay separate from the model backend. The
-initial model backend may call OpenRouter through an OpenAI-compatible async
-client.
+model backend calls Brain through an OpenAI-compatible async client.
 
-Use Korean for user-facing conversation unless the user asks otherwise.
+Use the language the user uses for user-facing conversation.
 
 ## Architecture Preferences
 
@@ -27,14 +26,13 @@ Use Korean for user-facing conversation unless the user asks otherwise.
 - Do not expose provider secrets, internal model routing, or raw API keys in
   A2A agent cards or public responses.
 
-## OpenRouter Backend
+## Model Backend
 
-- Treat OpenRouter as the LLM backend, not as the A2A transport.
-- Read `OPENROUTER_API_KEY` from the environment.
-- Read the model from `OPENROUTER_MODEL`, with a conservative default only in
-  code intended for local development.
-- Configure OpenRouter with the OpenAI-compatible base URL:
-  `https://openrouter.ai/api/v1`.
+- Treat Brain as the LLM backend, separate from the A2A transport.
+- Read `LLM_API_KEY` from the environment.
+- Read the model from `LLM_MODEL`, defaulting to `toddler`.
+- Read the OpenAI-compatible base URL from `LLM_BASE_URL`, defaulting to
+  `https://brain.temeddix.me/v1`.
 - Prefer structured error handling around provider failures, timeouts, and
   empty responses.
 
@@ -65,7 +63,7 @@ Store reusable project workflows under `.agents/skills`.
 - Before work that matches a project-local skill, read that skill's `SKILL.md`
   after scanning the relevant memory files.
 - Use `.agents/skills/aop-a2a-server` for A2A server, executor, agent card,
-  runtime instruction, OpenRouter tool-calling, workspace tool, and document
+  runtime instruction, model tool-calling, workspace tool, and document
   extraction work.
 - Use `.agents/skills/aop-deployment` for Containerfile, Compose, Portainer,
   Podman, health check, File Browser, Tika, runtime environment, and mounted
