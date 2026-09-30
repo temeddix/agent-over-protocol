@@ -25,6 +25,13 @@ mounts the `agent-data` named volume at `/data`, and the default SQLite file is
 `/data/conversations.sqlite`. Treat compact summaries as an application/backend
 concern rather than an A2A protocol feature.
 
+Brain integration audit exposed lost tool evidence: a successful file read was
+followed by a false denial of having read the file. The history fix returns a
+`ChatMessage` with typed `ToolExchange`/`ToolResult` evidence from the backend,
+persists evidence with each reply, and replays native function/tool messages on
+follow-up turns. A2A publishes final answer text only. The A2A server skill
+documents storage and regression-test requirements.
+
 Current card routes: serve `/.well-known/agent.json`,
 `/.well-known/agent-card.json`, and compatibility
 `/a2a/.well-known/agent-card.json`; JSON-RPC remains at `/a2a`.

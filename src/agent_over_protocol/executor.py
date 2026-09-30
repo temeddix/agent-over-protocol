@@ -136,9 +136,9 @@ class ChatAgentExecutor(AgentExecutor):
 
         await self._remember_exchange(task_id, context_id, context, prompt, answer)
 
-        message = _agent_message(task_id, context_id, answer)
+        message = _agent_message(task_id, context_id, answer.content)
         await event_queue.enqueue_event(
-            _artifact_event(task_id, context_id, answer, name="response")
+            _artifact_event(task_id, context_id, answer.content, name="response")
         )
         await event_queue.enqueue_event(
             _status_event(
@@ -171,12 +171,12 @@ class ChatAgentExecutor(AgentExecutor):
         context_id: str,
         context: RequestContext,
         prompt: str,
-        answer: str,
+        answer: ChatMessage,
     ) -> None:
         keys = _conversation_keys(task_id, context_id, context)
         exchange = [
             ChatMessage(role="user", content=prompt),
-            ChatMessage(role="assistant", content=answer),
+            answer,
         ]
         await self._conversation_store.append(keys, exchange)
 
@@ -351,13 +351,15 @@ def _merge_chat_history(
     *histories: Sequence[ChatMessage],
 ) -> list[ChatMessage]:
     merged: list[ChatMessage] = []
-    seen: set[tuple[ChatRole, str]] = set()
+    seen: set[ChatMessage] = set()
+    seen_text: set[tuple[ChatRole, str]] = set()
     for history in histories:
         for message in history:
             key = (message.role, message.content)
-            if key in seen:
+            if message in seen or (not message.tool_exchanges and key in seen_text):
                 continue
-            seen.add(key)
+            seen.add(message)
+            seen_text.add(key)
             merged.append(message)
     return merged
 

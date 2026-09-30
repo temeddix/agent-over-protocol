@@ -10,7 +10,11 @@ from contextlib import closing
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
-from agent_over_protocol.llm import ChatMessage, ChatRole
+from pydantic import TypeAdapter
+
+from agent_over_protocol.llm import ChatMessage, ChatRole, ToolExchange
+
+TOOL_EXCHANGES_ADAPTER = TypeAdapter(tuple[ToolExchange, ...])
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -76,15 +80,23 @@ class SQLiteConversationStore:
 
             placeholders = ",".join("?" for _ in conversation_ids)
             rows = connection.execute(
-                "SELECT role, content FROM conversation_messages "
+                "SELECT role, content, exchanges FROM conversation_messages "
+                "LEFT JOIN conversation_tool_exchanges "
+                "ON conversation_messages.id = conversation_tool_exchanges.message_id "
                 f"WHERE conversation_id IN ({placeholders}) "
                 "ORDER BY id",
                 tuple(conversation_ids),
             ).fetchall()
 
         return _dedupe_messages(
-            ChatMessage(role=cast("ChatRole", role), content=content)
-            for role, content in rows
+            ChatMessage(
+                role=cast("ChatRole", role),
+                content=content,
+                tool_exchanges=TOOL_EXCHANGES_ADAPTER.validate_json(exchanges)
+                if exchanges is not None
+                else (),
+            )
+            for role, content, exchanges in rows
         )[-self._max_messages :]
 
     def _append_sync(
@@ -118,14 +130,23 @@ class SQLiteConversationStore:
                     (conversation_id, merged_id),
                 )
 
-            connection.executemany(
-                "INSERT INTO conversation_messages(conversation_id, role, content) "
-                "VALUES (?, ?, ?)",
-                [
-                    (conversation_id, message.role, message.content)
-                    for message in messages
-                ],
-            )
+            for message in messages:
+                cursor = connection.execute(
+                    "INSERT INTO conversation_messages"
+                    "(conversation_id, role, content) VALUES (?, ?, ?)",
+                    (conversation_id, message.role, message.content),
+                )
+                if message.tool_exchanges:
+                    connection.execute(
+                        "INSERT INTO conversation_tool_exchanges"
+                        "(message_id, exchanges) VALUES (?, ?)",
+                        (
+                            cursor.lastrowid,
+                            TOOL_EXCHANGES_ADAPTER.dump_json(
+                                message.tool_exchanges,
+                            ).decode(),
+                        ),
+                    )
             connection.execute(
                 "DELETE FROM conversation_messages "
                 "WHERE conversation_id = ? "
@@ -160,6 +181,13 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
         "role TEXT NOT NULL CHECK(role IN ('user', 'assistant')), "
         "content TEXT NOT NULL, "
         "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        ")"
+    )
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS conversation_tool_exchanges ("
+        "message_id INTEGER PRIMARY KEY "
+        "REFERENCES conversation_messages(id) ON DELETE CASCADE, "
+        "exchanges TEXT NOT NULL"
         ")"
     )
     connection.execute(
@@ -199,11 +227,10 @@ def _normalized_keys(keys: Sequence[str]) -> list[str]:
 
 def _dedupe_messages(messages: Iterable[ChatMessage]) -> list[ChatMessage]:
     deduped: list[ChatMessage] = []
-    seen: set[tuple[ChatRole, str]] = set()
+    seen: set[ChatMessage] = set()
     for message in messages:
-        key = (message.role, message.content)
-        if key in seen:
+        if message in seen:
             continue
-        seen.add(key)
+        seen.add(message)
         deduped.append(message)
     return deduped

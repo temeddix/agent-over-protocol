@@ -33,6 +33,14 @@ Keep the A2A protocol/server layer separate from the model backend. Use `OpenAIC
   - keep ordinary chat turns in `SQLiteConversationStore`, backed by `Settings.agent_conversation_db_path`;
   - alias chat history by task IDs, `referenceTaskIds`, related tasks, safe conversation/thread metadata or headers, and a process-local fallback scope for clients that omit A2A context IDs;
   - merge stored context history with incoming task history before calling `ChatBackend.complete(..., history=...)`.
+- `ChatBackend.complete` returns an assistant `ChatMessage` with final text and
+  typed `ToolExchange`/`ToolResult` evidence. Persist the whole reply, but expose
+  only its text in A2A messages and artifacts. Replay exchanges as assistant
+  function calls followed by their matching tool results before the final text.
+- SQLite stores tool evidence in the additive `conversation_tool_exchanges`
+  table, keyed by message ID with cascading deletion. Preserve legacy text-only
+  rows, keep distinct tool evidence when answers have identical text, and verify
+  evidence survives app restart and expires with its parent message.
 - Compose mounts the `agent-data` named volume at `/data`; the default SQLite file is `/data/conversations.sqlite`.
 - A2A history controls protocol task state/history. Do not treat `historyLength` as model-side compact history or summarization. Compact summaries belong in the application/backend conversation layer if added later.
 

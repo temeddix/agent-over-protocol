@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+import httpx
 import pytest
 
 from agent_over_protocol.llm import (
@@ -13,6 +14,7 @@ from agent_over_protocol.llm import (
     ModelBackendError,
     OpenAICompatibleBackend,
 )
+from agent_over_protocol.server import create_app
 from agent_over_protocol.settings import Settings
 from agent_over_protocol.tools import build_workspace_tools
 
@@ -62,7 +64,7 @@ async def test_brain_completion_preserves_context(
         history=[ChatMessage(role="user", content="Previous question")],
     )
 
-    assert answer == "Hello."
+    assert answer.content == "Hello."
     request = httpx_mock.get_request()
     assert request is not None
     assert request.headers["Authorization"] == "Bearer test-brain-key"
@@ -92,7 +94,7 @@ async def test_provider_environment_overrides_reach_the_api(
     )
     backend = OpenAICompatibleBackend.from_settings(Settings())
 
-    assert await backend.complete("hello") == "Custom reply."
+    assert (await backend.complete("hello")).content == "Custom reply."
     request = httpx_mock.get_request()
     assert request is not None
     assert json.loads(request.content)["model"] == "custom-model"
@@ -134,7 +136,7 @@ async def test_brain_tool_call_returns_result_to_model(
         tools=build_workspace_tools(provider_settings),
     )
 
-    assert answer == "I read the note."
+    assert answer.content == "I read the note."
     first_request, followup_request = httpx_mock.get_requests()
     assert str(first_request.url) == "https://brain.temeddix.me/v1/chat/completions"
     payload = json.loads(followup_request.content)
@@ -184,6 +186,98 @@ def test_missing_brain_key_does_not_reuse_openrouter_key(
 
     with pytest.raises(ModelBackendError, match="LLM_API_KEY is required"):
         OpenAICompatibleBackend.from_settings(Settings())
+
+
+async def test_a2a_tool_evidence_survives_restart(
+    provider_settings: Settings,
+    httpx_mock: HTTPXMock,
+    tmp_path: Path,
+) -> None:
+    """Later Brain requests retain tool evidence without exposing it over A2A."""
+    (tmp_path / "note.txt").write_text("Verified marker: COBALT-814.")
+    provider_settings.agent_workspace_root = str(tmp_path)
+    provider_settings.agent_context_file = None
+    provider_settings.agent_conversation_db_path = str(tmp_path / "chat.sqlite")
+    httpx_mock.add_response(
+        json=_completion(
+            {
+                "role": "assistant",
+                "content": "Checking the file.",
+                "tool_calls": [
+                    {
+                        "id": "read-note",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": '{"path": "note.txt"}',
+                        },
+                    },
+                    {
+                        "id": "missing-note",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": '{"path": "missing.txt"}',
+                        },
+                    },
+                ],
+            },
+        ),
+    )
+    for _ in range(2):
+        httpx_mock.add_response(
+            json=_completion({"role": "assistant", "content": "COBALT-814"}),
+        )
+
+    for index, prompt in enumerate(("Read note.txt.", "What did you read?")):
+        app = create_app(settings=provider_settings)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            response = await client.post(
+                "/a2a",
+                headers={"A2A-Version": "1.0"},
+                json={
+                    "jsonrpc": "2.0",
+                    "id": index,
+                    "method": "SendMessage",
+                    "params": {
+                        "message": {
+                            "messageId": f"message-{index}",
+                            "contextId": "tool-history-test",
+                            "role": "ROLE_USER",
+                            "parts": [{"text": prompt}],
+                        },
+                    },
+                },
+            )
+        task = response.json()["result"]["task"]
+        assert task["status"]["state"] == "TASK_STATE_COMPLETED"
+        assert task["artifacts"][0]["parts"] == [{"text": "COBALT-814"}]
+        assert "Verified marker" not in response.text
+        assert "missing-note" not in response.text
+
+    messages = json.loads(httpx_mock.get_requests()[-1].content)["messages"]
+    assert [message["role"] for message in messages] == [
+        "system",
+        "user",
+        "assistant",
+        "tool",
+        "tool",
+        "assistant",
+        "user",
+    ]
+    assert messages[2]["content"] == "Checking the file."
+    assert messages[2]["tool_calls"][0]["function"]["arguments"] == (
+        '{"path": "note.txt"}'
+    )
+    assert messages[3]["tool_call_id"] == "read-note"
+    assert json.loads(messages[3]["content"])["document"]["text"] == (
+        "Verified marker: COBALT-814."
+    )
+    assert messages[4]["tool_call_id"] == "missing-note"
+    assert json.loads(messages[4]["content"])["kind"] == "error"
+    assert messages[-2] == {"role": "assistant", "content": "COBALT-814"}
 
 
 def _completion(message: dict[str, object]) -> dict[str, object]:

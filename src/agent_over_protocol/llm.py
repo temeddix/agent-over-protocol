@@ -15,10 +15,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from openai.types.chat import (
-        ChatCompletionAssistantMessageParam,
         ChatCompletionMessageParam,
         ChatCompletionMessageToolCall,
-        ChatCompletionMessageToolCallParam,
     )
 
     from agent_over_protocol.settings import Settings
@@ -45,11 +43,30 @@ class ModelBackendError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class ToolResult:
+    """A model-requested function call and its actual server-side result."""
+
+    call_id: str
+    name: str
+    arguments: str
+    result: str
+
+
+@dataclass(frozen=True, slots=True)
+class ToolExchange:
+    """One assistant tool-call message and all of its matching results."""
+
+    content: str | None
+    results: tuple[ToolResult, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ChatMessage:
-    """A prior conversational message to include in model context."""
+    """A conversational message with the tool evidence behind its answer."""
 
     role: ChatRole
     content: str
+    tool_exchanges: tuple[ToolExchange, ...] = ()
 
 
 class ChatBackend(Protocol):
@@ -62,7 +79,7 @@ class ChatBackend(Protocol):
         instructions: str | None = None,
         history: Sequence[ChatMessage] = (),
         tools: Sequence[AgentTool] = (),
-    ) -> str:
+    ) -> ChatMessage:
         """Return a response for a user prompt."""
 
 
@@ -109,7 +126,7 @@ class OpenAICompatibleBackend:
         instructions: str | None = None,
         history: Sequence[ChatMessage] = (),
         tools: Sequence[AgentTool] = (),
-    ) -> str:
+    ) -> ChatMessage:
         """Return a chat completion for the prompt."""
         if tools:
             return await self._complete_with_tools(
@@ -134,7 +151,7 @@ class OpenAICompatibleBackend:
 
         content = response.choices[0].message.content
         if isinstance(content, str) and content.strip():
-            return content
+            return ChatMessage(role="assistant", content=content)
 
         message = "Model provider returned an empty response"
         raise ModelBackendError(message)
@@ -146,7 +163,7 @@ class OpenAICompatibleBackend:
         instructions: str | None,
         history: Sequence[ChatMessage],
         tools: Sequence[AgentTool],
-    ) -> str:
+    ) -> ChatMessage:
         messages = _messages(
             prompt,
             instructions=_combine_instructions(
@@ -157,6 +174,7 @@ class OpenAICompatibleBackend:
         )
         tool_index = {tool.name: tool for tool in tools}
         openai_tools = [tool.as_openai_tool() for tool in tools]
+        exchanges: list[ToolExchange] = []
 
         for _ in range(self._max_tool_rounds):
             try:
@@ -179,23 +197,29 @@ class OpenAICompatibleBackend:
             if not tool_calls:
                 content = assistant_message.content
                 if isinstance(content, str) and content.strip():
-                    return content
+                    return ChatMessage(
+                        role="assistant",
+                        content=content,
+                        tool_exchanges=tuple(exchanges),
+                    )
                 message = "Model provider returned an empty response"
                 raise ModelBackendError(message)
 
-            messages.append(
-                _assistant_tool_message(
-                    content=assistant_message.content,
-                    tool_calls=tool_calls,
+            results = [
+                ToolResult(
+                    call_id=tool_call.id,
+                    name=tool_call.function.name,
+                    arguments=tool_call.function.arguments,
+                    result=await _execute_tool_call(tool_call, tool_index),
                 )
+                for tool_call in tool_calls
+            ]
+            exchange = ToolExchange(
+                content=assistant_message.content,
+                results=tuple(results),
             )
-            for tool_call in tool_calls:
-                tool_message: ChatCompletionMessageParam = {
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": await _execute_tool_call(tool_call, tool_index),
-                }
-                messages.append(tool_message)
+            exchanges.append(exchange)
+            messages.extend(_tool_exchange_messages(exchange))
 
         message = "Model provider did not produce a final response after tool use"
         raise ModelBackendError(message)
@@ -214,6 +238,8 @@ def _messages(
     for message in history:
         content = message.content.strip()
         if content:
+            for exchange in message.tool_exchanges:
+                messages.extend(_tool_exchange_messages(exchange))
             messages.append(
                 cast(
                     "ChatCompletionMessageParam",
@@ -231,29 +257,35 @@ def _combine_instructions(*parts: str | None) -> str | None:
     return "\n\n".join(present)
 
 
-def _assistant_tool_message(
-    *,
-    content: object,
-    tool_calls: Sequence[ChatCompletionMessageToolCall],
-) -> ChatCompletionAssistantMessageParam:
-    return {
-        "role": "assistant",
-        "content": content if isinstance(content, str) else None,
-        "tool_calls": [_tool_call_param(tool_call) for tool_call in tool_calls],
-    }
-
-
-def _tool_call_param(
-    tool_call: ChatCompletionMessageToolCall,
-) -> ChatCompletionMessageToolCallParam:
-    return {
-        "id": tool_call.id,
-        "type": "function",
-        "function": {
-            "name": tool_call.function.name,
-            "arguments": tool_call.function.arguments,
+def _tool_exchange_messages(
+    exchange: ToolExchange,
+) -> list[ChatCompletionMessageParam]:
+    messages: list[ChatCompletionMessageParam] = [
+        {
+            "role": "assistant",
+            "content": exchange.content,
+            "tool_calls": [
+                {
+                    "id": result.call_id,
+                    "type": "function",
+                    "function": {
+                        "name": result.name,
+                        "arguments": result.arguments,
+                    },
+                }
+                for result in exchange.results
+            ],
         },
-    }
+    ]
+    messages.extend(
+        {
+            "role": "tool",
+            "tool_call_id": result.call_id,
+            "content": result.result,
+        }
+        for result in exchange.results
+    )
+    return messages
 
 
 def _function_tool_calls(

@@ -10,13 +10,13 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from agent_over_protocol.llm import ChatMessage
 from agent_over_protocol.server import create_app
 from agent_over_protocol.settings import Settings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
 
-    from agent_over_protocol.llm import ChatMessage
     from agent_over_protocol.tools import AgentTool
 
 
@@ -41,13 +41,13 @@ class FakeBackend:
         instructions: str | None = None,
         history: Sequence[ChatMessage] = (),
         tools: Sequence[AgentTool] = (),
-    ) -> str:
+    ) -> ChatMessage:
         """Capture the prompt and return the configured response."""
         self.prompts.append(prompt)
         self.instructions.append(instructions)
         self.histories.append([(message.role, message.content) for message in history])
         self.tool_names.append([tool.name for tool in tools])
-        return self.response
+        return ChatMessage(role="assistant", content=self.response)
 
 
 @asynccontextmanager

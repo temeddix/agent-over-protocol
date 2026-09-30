@@ -40,6 +40,9 @@ Before substantial deployment work, scan:
   If multiple stacks share the name, select the one with `BRAIN_API_KEY` set.
 - Migrate old deployments from `OPENROUTER_API_KEY` to `LLM_API_KEY`; do not
   automatically reuse credentials across providers.
+- A Git/Compose update does not migrate Portainer's saved environment. Verify
+  the stack and recreated container both have a nonempty `LLM_API_KEY`;
+  an empty interpolated value causes a startup crash loop and public HTTP 502.
 - Expose only required runtime values such as `AGENT_BASE_URL`, `LLM_API_KEY`, `AOP_HOST_PORT`, and `FILEBROWSER_PORT`.
 - Do not add optional Compose environment passthroughs or implicit interpolation defaults unless the user explicitly asks.
 
@@ -95,6 +98,11 @@ For Portainer deployments backed by Podman:
 - Preserve the stack's Git reference, environment variables, and named volumes
   when redeploying. Read credentials from `~/.env` only within the process that
   needs them, and never print credentials or include them in repository files.
+- Git stack redeploy uses `PUT /api/stacks/{id}/git/redeploy?endpointId=...`
+  with the complete `Env` array and existing `RepositoryReferenceName`.
+  Preserve stored Git authentication by omitting replacement credentials.
+  A successful response can mean deployment is still running; check stack
+  status, container health, and a real A2A completion afterward.
 
 Local notes from earlier debugging:
 

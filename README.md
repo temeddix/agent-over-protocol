@@ -65,7 +65,10 @@ named volume. Edit `SOUL.md` there to change the runtime context used by the
 A2A agent. The agent reads `/context/SOUL.md` on each model request.
 
 Conversation history is stored in SQLite at `/data/conversations.sqlite` on the
-`agent-data` named volume.
+`agent-data` named volume. Replies retain their tool calls and results so later
+turns can use the same evidence, including after a restart. Tool evidence stays
+in model context; A2A responses contain only the final answer. Evidence expires
+with its associated message under the conversation history limit.
 
 The A2A agent can browse the same named volume through workspace tools. It can
 list folders, read supported files, and search text under `/context`. It can
