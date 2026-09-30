@@ -48,6 +48,9 @@ Before substantial deployment work, scan:
 - Reach Tika from AOP at `http://tika:9998`.
 - Run File Browser on unprivileged container port `8080` so its non-root user
   can bind successfully, and map `${FILEBROWSER_PORT}` to that port.
+- Set `FB_PORT: "8080"` in File Browser's environment as well as the command:
+  its image-provided health check reads `FB_PORT` or `/config/settings.json`,
+  not the server's `--port` argument.
 - Store the File Browser database in the `filebrowser-database` named volume.
 
 ## Change Workflow
@@ -73,6 +76,18 @@ After starting a container locally, verify:
 - `/.well-known/agent.json`
 - `/.well-known/agent-card.json`
 - an A2A v1 `/a2a` JSON-RPC request with `A2A-Version: 1.0`
+
+For Portainer deployments backed by Podman:
+
+- Use `CMD-SHELL` with a quoted `python -c` program for the agent health check.
+  Podman's Docker-compatible API can split a Compose `CMD` program into words,
+  leaving Python to execute only `from` and fail with `SyntaxError`.
+- Inspect the deployed container's `Config.Healthcheck.Test` and
+  `State.Health`, rather than assuming valid Compose YAML guarantees correct
+  runtime arguments. Verify both the agent and File Browser become `healthy`.
+- Preserve the stack's Git reference, environment variables, and named volumes
+  when redeploying. Read credentials from `~/.env` only within the process that
+  needs them, and never print credentials or include them in repository files.
 
 Local notes from earlier debugging:
 

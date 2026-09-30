@@ -17,3 +17,7 @@ Use that skill before changing:
 
 Keep this memory file as an index. Move stable reusable deployment procedures
 into the skill instead of duplicating them here.
+
+The deployment skill also documents File Browser's health-check port setting
+and the Podman Docker-compatible API's handling of Python health-check commands.
+Check deployed container arguments and health state when diagnosing failures.
