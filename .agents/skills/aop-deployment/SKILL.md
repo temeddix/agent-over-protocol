@@ -22,7 +22,8 @@ Before substantial deployment work, scan:
 - Base the container image on the official uv Python 3.14 slim image.
 - Install locked runtime dependencies with `uv sync --frozen --no-dev --no-install-project`.
 - Run the ASGI server on container port `8000`.
-- Map `${AOP_HOST_PORT}` to container port `8000`.
+- Do not publish the agent on a host port; Caddy reaches it as
+  `agent-over-protocol:8000` on `agent-over-protocol_default`.
 - Use `/healthz` for container health checks.
 - Keep `.dockerignore` current for Portainer and the local Podman Compose provider.
 
@@ -43,7 +44,7 @@ Before substantial deployment work, scan:
 - A Git/Compose update does not migrate Portainer's saved environment. Verify
   the stack and recreated container both have a nonempty `LLM_API_KEY`;
   an empty interpolated value causes a startup crash loop and public HTTP 502.
-- Expose only required runtime values such as `AGENT_BASE_URL`, `LLM_API_KEY`, `AOP_HOST_PORT`, and `FILEBROWSER_PORT`.
+- Expose only required runtime values such as `AGENT_BASE_URL` and `LLM_API_KEY`.
 - Do not add optional Compose environment passthroughs or implicit interpolation defaults unless the user explicitly asks.
 
 ## Context Volume And Sidecars
@@ -57,7 +58,8 @@ Before substantial deployment work, scan:
 - Do not expose Tika on a host port.
 - Reach Tika from AOP at `http://tika:9998`.
 - Run File Browser on unprivileged container port `8080` so its non-root user
-  can bind successfully, and map `${FILEBROWSER_PORT}` to that port.
+  can bind successfully. Caddy reaches it as `filebrowser:8080` on the stack
+  network; do not publish a host port.
 - Set `FB_PORT: "8080"` in File Browser's environment as well as the command:
   its image-provided health check reads `FB_PORT` or `/config/settings.json`,
   not the server's `--port` argument.

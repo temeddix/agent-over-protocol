@@ -22,6 +22,10 @@ The deployment skill also documents File Browser's health-check port setting
 and the Podman Docker-compatible API's handling of Python health-check commands.
 Check deployed container arguments and health state when diagnosing failures.
 
+The personal Caddy gateway joins `agent-over-protocol_default` and reaches the
+agent at `agent-over-protocol:8000` and File Browser at `filebrowser:8080`.
+Neither service publishes a host port.
+
 The September 2026 Brain migration audit found the AOP Portainer stack still
 supplied only `OPENROUTER_API_KEY`; Compose injected an empty `LLM_API_KEY`,
 causing startup failure (`LLM_API_KEY is required`), repeated container restarts,
