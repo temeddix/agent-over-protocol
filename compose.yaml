@@ -5,8 +5,6 @@ services:
       dockerfile: Containerfile
     image: agent-over-protocol:latest
     restart: unless-stopped
-    ports:
-      - "${AOP_HOST_PORT}:8000"
     environment:
       AGENT_BASE_URL: "${AGENT_BASE_URL}"
       LLM_API_KEY: "${LLM_API_KEY}"
@@ -28,8 +26,6 @@ services:
   filebrowser:
     image: filebrowser/filebrowser:latest
     restart: unless-stopped
-    ports:
-      - "${FILEBROWSER_PORT}:8080"
     environment:
       FB_PORT: "8080"
     volumes:
