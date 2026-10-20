@@ -80,5 +80,5 @@ through the internal Tika sidecar and returned as JSON with text plus metadata.
 
 ## Container Build Context
 
-Portainer and the current local Podman Compose provider use `.dockerignore` for
-the build context.
+Build-context ignore rules live in `.containerignore`. Portainer builds on
+Podman, which reads it for the build context.

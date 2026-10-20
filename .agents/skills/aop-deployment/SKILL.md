@@ -1,6 +1,6 @@
 ---
 name: aop-deployment
-description: Project-local workflow for agent-over-protocol deployment and runtime verification. Use when editing Containerfile, compose.yaml, .dockerignore, health checks, Portainer or Podman setup, File Browser, Tika, runtime environment variables, or container-facing agent context volume behavior.
+description: Project-local workflow for agent-over-protocol deployment and runtime verification. Use when editing Containerfile, compose.yaml, .containerignore, health checks, Portainer or Podman setup, File Browser, Tika, runtime environment variables, or container-facing agent context volume behavior.
 ---
 
 # AOP Deployment
@@ -25,7 +25,7 @@ Before substantial deployment work, scan:
 - Do not publish the agent on a host port; Caddy reaches it as
   `agent-over-protocol:8000` on `agent-over-protocol_default`.
 - Use `/healthz` for container health checks.
-- Keep `.dockerignore` current for Portainer and the local Podman Compose provider.
+- Keep `.containerignore` current for Portainer and the local Podman Compose provider.
 
 ## Environment And Secrets
 
@@ -67,7 +67,7 @@ Before substantial deployment work, scan:
 
 ## Change Workflow
 
-- Inspect `Containerfile`, `compose.yaml`, `.dockerignore`, `src/agent_over_protocol/settings.py`, and README deployment notes before changing deployment behavior.
+- Inspect `Containerfile`, `compose.yaml`, `.containerignore`, `src/agent_over_protocol/settings.py`, and README deployment notes before changing deployment behavior.
 - Preserve the split between public A2A HTTP surfaces and private provider configuration.
 - Avoid leaking provider keys, model routing, or internal environment values in agent cards, logs, public responses, or examples.
 - Keep Compose minimal unless the user asks for richer deployment features.
