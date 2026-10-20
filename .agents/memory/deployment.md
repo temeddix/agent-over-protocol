@@ -7,7 +7,7 @@ Use that skill before changing:
 
 - `Containerfile`
 - `compose.yaml`
-- `Containerfile.dockerignore`
+- `.containerignore`
 - Portainer or Podman behavior
 - File Browser
 - Tika

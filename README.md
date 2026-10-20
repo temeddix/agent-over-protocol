@@ -80,7 +80,5 @@ through the internal Tika sidecar and returned as JSON with text plus metadata.
 
 ## Container Build Context
 
-Build-context ignore rules live in `Containerfile.dockerignore`, next to
-`Containerfile`. Docker (BuildKit, used by Portainer) and Podman both read
-`<file>.dockerignore` for the named build file. Docker does not read
-`.containerignore`, so do not rename it to that.
+Build-context ignore rules live in `.containerignore`. Portainer builds on
+Podman, which reads it for the build context.
